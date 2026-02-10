@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Rocket, ShieldCheck, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { MIN_PASSWORD_LENGTH } from '../lib/constants';
 
@@ -39,32 +38,7 @@ export function RegisterPage() {
 
   return (
     <div className="auth-shell">
-      <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-[1.04fr_0.96fr]">
-        <div className="glass-panel hidden rounded-2xl border p-7 lg:flex lg:flex-col lg:justify-between">
-          <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-border-subtle bg-bg-mod-subtle px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              <Sparkles size={14} />
-              Join the Community
-            </div>
-            <h2 className="max-w-sm text-3xl font-bold leading-tight text-text-primary">
-              Create your identity and find your people.
-            </h2>
-            <p className="mt-3 max-w-md text-sm leading-6 text-text-secondary">
-              Set up your profile once, then jump into servers, voice rooms, and live conversations.
-            </p>
-          </div>
-          <div className="space-y-2 pt-6">
-            <div className="flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3 py-2.5 text-sm text-text-secondary">
-              <Rocket size={16} className="text-accent-primary" />
-              Onboard in minutes with unified profile settings
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3 py-2.5 text-sm text-text-secondary">
-              <ShieldCheck size={16} className="text-accent-success" />
-              Terms and privacy controls built into the flow
-            </div>
-          </div>
-        </div>
-
+      <div className="flex w-full justify-center">
         <form onSubmit={handleSubmit} className="auth-card">
           <div className="mb-7 text-center">
             <h1 className="text-3xl font-bold leading-tight text-text-primary">Create an account</h1>
@@ -116,7 +90,7 @@ export function RegisterPage() {
             />
           </label>
 
-          <label className="mb-4 block">
+          <label className="mb-6 block">
             <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
               Password <span className="text-accent-danger">*</span>
             </span>
@@ -131,7 +105,7 @@ export function RegisterPage() {
             />
           </label>
 
-          <label className="mb-5 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-3 py-2.5">
+          <label className="mb-6 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-3.5 py-3.5">
             <input
               type="checkbox"
               checked={agreed}
@@ -151,11 +125,11 @@ export function RegisterPage() {
             </span>
           </label>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
+          <button type="submit" disabled={loading} className="btn-primary mt-1 w-full min-h-[2.9rem]">
             {loading ? 'Creating account...' : 'Continue'}
           </button>
 
-          <p className="mt-4 text-sm text-text-muted">
+          <p className="mt-6 text-center text-sm text-text-muted">
             <Link to="/login" className="font-semibold text-text-link hover:underline">
               Already have an account?
             </Link>
