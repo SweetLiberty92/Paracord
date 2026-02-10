@@ -1,0 +1,217 @@
+use crate::{DbError, DbPool};
+use chrono::{DateTime, Utc};
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct UserRow {
+    pub id: i64,
+    pub username: String,
+    pub discriminator: i16,
+    pub email: String,
+    pub password_hash: String,
+    pub display_name: Option<String>,
+    pub avatar_hash: Option<String>,
+    pub banner_hash: Option<String>,
+    pub bio: Option<String>,
+    pub accent_color: Option<i32>,
+    pub flags: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct UserSettingsRow {
+    pub user_id: i64,
+    pub theme: String,
+    pub custom_css: Option<String>,
+    pub locale: String,
+    pub message_display: String,
+    pub notifications: serde_json::Value,
+    pub keybinds: serde_json::Value,
+    pub updated_at: DateTime<Utc>,
+}
+
+pub async fn create_user(
+    pool: &DbPool,
+    id: i64,
+    username: &str,
+    discriminator: i16,
+    email: &str,
+    password_hash: &str,
+) -> Result<UserRow, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "INSERT INTO users (id, username, discriminator, email, password_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         RETURNING id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at"
+    )
+    .bind(id)
+    .bind(username)
+    .bind(discriminator)
+    .bind(email)
+    .bind(password_hash)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_user_by_id(pool: &DbPool, id: i64) -> Result<Option<UserRow>, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at
+         FROM users WHERE id = ?1"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_user_by_email(pool: &DbPool, email: &str) -> Result<Option<UserRow>, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at
+         FROM users WHERE email = ?1"
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_user_by_username(
+    pool: &DbPool,
+    username: &str,
+    discriminator: i16,
+) -> Result<Option<UserRow>, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at
+         FROM users WHERE username = ?1 AND discriminator = ?2"
+    )
+    .bind(username)
+    .bind(discriminator)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_user_by_username_only(
+    pool: &DbPool,
+    username: &str,
+) -> Result<Option<UserRow>, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at
+         FROM users
+         WHERE username = ?1
+         ORDER BY created_at ASC
+         LIMIT 1",
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn update_user(
+    pool: &DbPool,
+    id: i64,
+    display_name: Option<&str>,
+    bio: Option<&str>,
+    avatar_hash: Option<&str>,
+) -> Result<UserRow, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "UPDATE users SET display_name = COALESCE(?2, display_name), bio = COALESCE(?3, bio), avatar_hash = COALESCE(?4, avatar_hash), updated_at = datetime('now')
+         WHERE id = ?1
+         RETURNING id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at"
+    )
+    .bind(id)
+    .bind(display_name)
+    .bind(bio)
+    .bind(avatar_hash)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_user_settings(pool: &DbPool, user_id: i64) -> Result<Option<UserSettingsRow>, DbError> {
+    let row = sqlx::query_as::<_, UserSettingsRow>(
+        "SELECT user_id, theme, custom_css, locale, message_display, notifications, keybinds, updated_at
+         FROM user_settings WHERE user_id = ?1"
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn count_users(pool: &DbPool) -> Result<i64, DbError> {
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(pool)
+        .await?;
+    Ok(row.0)
+}
+
+pub async fn update_user_flags(pool: &DbPool, id: i64, flags: i32) -> Result<UserRow, DbError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "UPDATE users SET flags = ?2, updated_at = datetime('now')
+         WHERE id = ?1
+         RETURNING id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at"
+    )
+    .bind(id)
+    .bind(flags)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn list_users_paginated(pool: &DbPool, offset: i64, limit: i64) -> Result<Vec<UserRow>, DbError> {
+    let rows = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, discriminator, email, password_hash, display_name, avatar_hash, banner_hash, bio, accent_color, flags, created_at
+         FROM users
+         ORDER BY created_at ASC
+         LIMIT ?1 OFFSET ?2"
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn delete_user(pool: &DbPool, id: i64) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM users WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn upsert_user_settings(
+    pool: &DbPool,
+    user_id: i64,
+    theme: &str,
+    locale: &str,
+    message_display: &str,
+    custom_css: Option<&str>,
+    notifications: Option<&serde_json::Value>,
+    keybinds: Option<&serde_json::Value>,
+) -> Result<UserSettingsRow, DbError> {
+    let row = sqlx::query_as::<_, UserSettingsRow>(
+        "INSERT INTO user_settings (user_id, theme, locale, message_display, custom_css, notifications, keybinds)
+         VALUES (?1, ?2, ?3, ?4, ?5, COALESCE(?6, '{}'), COALESCE(?7, '{}'))
+         ON CONFLICT (user_id) DO UPDATE SET
+            theme = ?2,
+            locale = ?3,
+            message_display = ?4,
+            custom_css = ?5,
+            notifications = COALESCE(?6, user_settings.notifications),
+            keybinds = COALESCE(?7, user_settings.keybinds),
+            updated_at = datetime('now')
+         RETURNING user_id, theme, custom_css, locale, message_display, notifications, keybinds, updated_at"
+    )
+    .bind(user_id)
+    .bind(theme)
+    .bind(locale)
+    .bind(message_display)
+    .bind(custom_css)
+    .bind(notifications)
+    .bind(keybinds)
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}

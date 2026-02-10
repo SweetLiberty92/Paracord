@@ -1,0 +1,58 @@
+[server]
+bind_address = "0.0.0.0:8080"
+server_name = "paracord.example.com"
+# Optional: serve the built web UI from this directory. Can also be set via --web-dir CLI arg.
+# web_dir = "./web"
+# For internet deployments, set public DNS name above and terminate TLS at a reverse proxy.
+
+# Public URL where users access the app (e.g., https://chat.example.com).
+# Used for CORS auto-configuration and invite links.
+# Env override: PARACORD_PUBLIC_URL
+# public_url = "https://chat.example.com"
+
+[database]
+url = "sqlite://./data/paracord.db?mode=rwc"
+max_connections = 5
+
+[auth]
+# jwt_secret is auto-generated on first run. Override here or via PARACORD_JWT_SECRET env var.
+jwt_secret = "CHANGE_ME_TO_A_RANDOM_64_CHAR_STRING"
+jwt_expiry_seconds = 3600
+registration_enabled = true
+
+[storage]
+storage_type = "local"
+path = "./data/uploads"
+# max_upload_size is optional and defaults to 50MB.
+
+[media]
+storage_path = "./data/files"
+max_file_size = 1073741824  # 1GB in bytes
+p2p_threshold = 1073741824  # Files over 1GB use P2P
+
+[livekit]
+# api_key and api_secret are auto-generated on first run.
+api_key = "devkey"
+api_secret = "secret"
+# Internal URL used by the server to communicate with LiveKit (token creation, room management).
+url = "ws://localhost:7880"
+http_url = "http://localhost:7880"
+# Public URL sent to clients for WebSocket connections.
+# Falls back to `url` if not set. In Docker/production, set this to the externally
+# reachable LiveKit endpoint (e.g., via nginx reverse proxy).
+# Env override: PARACORD_LIVEKIT_PUBLIC_URL
+# public_url = "wss://chat.example.com/livekit"
+
+[federation]
+enabled = false
+# Optional in MVP rollout. Enable only after keys are configured on disk.
+# signing_key_path = "/etc/paracord/federation_signing_key.pem"
+
+[network]
+# Automatically forward ports via UPnP on startup (default: true).
+# When enabled, the server discovers your router, forwards required ports,
+# detects your public IP, and prints a shareable URL. Set to false if you
+# are behind a VPN, inside Docker, or prefer manual port forwarding.
+upnp = true
+# How long each UPnP mapping lasts in seconds (auto-renewed). 0 = permanent on some routers.
+upnp_lease_seconds = 3600

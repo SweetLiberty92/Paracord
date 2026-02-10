@@ -1,0 +1,16 @@
+pub mod auth;
+pub mod audit;
+pub mod guilds;
+pub mod channels;
+pub mod members;
+pub mod invites;
+pub mod relationships;
+pub mod voice;
+pub mod users;
+pub mod bans;
+pub mod roles;
+pub mod audit_logs;
+pub mod files;
+pub mod dms;
+pub mod federation;
+pub mod admin;

@@ -1,0 +1,116 @@
+use crate::{DbError, DbPool};
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct VoiceStateRow {
+    pub user_id: i64,
+    pub guild_id: Option<i64>,
+    pub channel_id: i64,
+    pub session_id: String,
+    pub self_mute: bool,
+    pub self_deaf: bool,
+    pub self_stream: bool,
+    pub self_video: bool,
+    pub suppress: bool,
+}
+
+pub async fn upsert_voice_state(
+    pool: &DbPool,
+    user_id: i64,
+    guild_id: Option<i64>,
+    channel_id: i64,
+    session_id: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "INSERT INTO voice_states (user_id, guild_id, channel_id, session_id)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (user_id) DO UPDATE SET guild_id = ?2, channel_id = ?3, session_id = ?4"
+    )
+    .bind(user_id)
+    .bind(guild_id)
+    .bind(channel_id)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_channel_voice_states(
+    pool: &DbPool,
+    channel_id: i64,
+) -> Result<Vec<VoiceStateRow>, DbError> {
+    let rows = sqlx::query_as::<_, VoiceStateRow>(
+        "SELECT user_id, guild_id, channel_id, session_id, self_mute, self_deaf, self_stream, self_video, suppress
+         FROM voice_states WHERE channel_id = ?1"
+    )
+    .bind(channel_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn get_user_voice_state(
+    pool: &DbPool,
+    user_id: i64,
+    guild_id: Option<i64>,
+) -> Result<Option<VoiceStateRow>, DbError> {
+    let row = sqlx::query_as::<_, VoiceStateRow>(
+        "SELECT user_id, guild_id, channel_id, session_id, self_mute, self_deaf, self_stream, self_video, suppress
+         FROM voice_states WHERE user_id = ?1 AND COALESCE(guild_id, 0) = COALESCE(?2, 0)"
+    )
+    .bind(user_id)
+    .bind(guild_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_all_user_voice_states(
+    pool: &DbPool,
+    user_id: i64,
+) -> Result<Vec<VoiceStateRow>, DbError> {
+    let rows = sqlx::query_as::<_, VoiceStateRow>(
+        "SELECT user_id, guild_id, channel_id, session_id, self_mute, self_deaf, self_stream, self_video, suppress
+         FROM voice_states WHERE user_id = ?1",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn remove_voice_state(
+    pool: &DbPool,
+    user_id: i64,
+    guild_id: Option<i64>,
+) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM voice_states WHERE user_id = ?1 AND COALESCE(guild_id, 0) = COALESCE(?2, 0)")
+        .bind(user_id)
+        .bind(guild_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_voice_state(
+    pool: &DbPool,
+    user_id: i64,
+    guild_id: Option<i64>,
+    self_mute: bool,
+    self_deaf: bool,
+    self_stream: bool,
+    self_video: bool,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE voice_states SET self_mute = ?3, self_deaf = ?4, self_stream = ?5, self_video = ?6
+         WHERE user_id = ?1 AND COALESCE(guild_id, 0) = COALESCE(?2, 0)"
+    )
+    .bind(user_id)
+    .bind(guild_id)
+    .bind(self_mute)
+    .bind(self_deaf)
+    .bind(self_stream)
+    .bind(self_video)
+    .execute(pool)
+    .await?;
+    Ok(())
+}

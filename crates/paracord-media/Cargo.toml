@@ -1,0 +1,42 @@
+[package]
+name = "paracord-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+paracord-models = { workspace = true }
+paracord-util = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client for LiveKit API
+reqwest = { version = "0.12", features = ["json"] }
+
+# JWT for LiveKit tokens
+jsonwebtoken = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# File handling
+mime_guess = "2"
+tokio-util = { version = "0.7", features = ["io"] }
+uuid = { workspace = true }
+urlencoding = "2"
+
+# Crypto
+rand = { workspace = true }

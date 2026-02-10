@@ -1,0 +1,18 @@
+[package]
+name = "paracord-federation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+paracord-core = { workspace = true }
+paracord-db = { workspace = true }
+paracord-models = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+sqlx = { workspace = true }
+ed25519-dalek = { workspace = true }

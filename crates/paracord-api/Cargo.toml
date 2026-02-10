@@ -1,0 +1,27 @@
+[package]
+name = "paracord-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+paracord-core = { workspace = true }
+paracord-models = { workspace = true }
+paracord-media = { workspace = true }
+paracord-db = { workspace = true }
+paracord-util = { workspace = true }
+paracord-federation = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+ed25519-dalek = { workspace = true }

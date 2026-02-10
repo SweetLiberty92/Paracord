@@ -1,0 +1,271 @@
+import { create } from 'zustand';
+import type { VoiceState } from '../types';
+import { voiceApi } from '../api/voice';
+import { Room } from 'livekit-client';
+
+const INTERNAL_LIVEKIT_HOSTS = new Set([
+  'host.docker.internal',
+  'livekit',
+  'docker-livekit-1',
+]);
+
+function resolveClientRtcHostname(): string {
+  if (typeof window === 'undefined') {
+    return 'localhost';
+  }
+  const host = window.location.hostname;
+  if (!host) {
+    return 'localhost';
+  }
+  // Tauri and local dev hosts should map to loopback for local LiveKit.
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) {
+    return 'localhost';
+  }
+  return host;
+}
+
+function normalizeLivekitUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (INTERNAL_LIVEKIT_HOSTS.has(parsed.hostname)) {
+      parsed.hostname = resolveClientRtcHostname();
+    }
+    // livekit-client can fail on URLs normalized to "...//rtc" when base path is "/".
+    const pathname = parsed.pathname === '/' ? '' : parsed.pathname.replace(/\/+$/, '');
+    return `${parsed.protocol}//${parsed.host}${pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url
+      .replace('host.docker.internal', 'localhost')
+      .replace('livekit', 'localhost')
+      .replace(/\/+$/, '');
+  }
+}
+
+interface VoiceStoreState {
+  connected: boolean;
+  joining: boolean;
+  joiningChannelId: string | null;
+  connectionError: string | null;
+  connectionErrorChannelId: string | null;
+  channelId: string | null;
+  guildId: string | null;
+  selfMute: boolean;
+  selfDeaf: boolean;
+  selfStream: boolean;
+  selfVideo: boolean;
+  // Voice states for all users in current channel, keyed by user ID
+  participants: Map<string, VoiceState>;
+  // LiveKit connection info
+  livekitToken: string | null;
+  livekitUrl: string | null;
+  roomName: string | null;
+  room: Room | null;
+
+  joinChannel: (channelId: string, guildId?: string) => Promise<void>;
+  leaveChannel: () => Promise<void>;
+  toggleMute: () => void;
+  toggleDeaf: () => void;
+  startStream: (qualityPreset?: string) => Promise<void>;
+  stopStream: () => void;
+  toggleVideo: () => void;
+  clearConnectionError: () => void;
+
+  // Gateway event handler
+  handleVoiceStateUpdate: (state: VoiceState) => void;
+}
+
+export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
+  connected: false,
+  joining: false,
+  joiningChannelId: null,
+  connectionError: null,
+  connectionErrorChannelId: null,
+  channelId: null,
+  guildId: null,
+  selfMute: false,
+  selfDeaf: false,
+  selfStream: false,
+  selfVideo: false,
+  participants: new Map(),
+  livekitToken: null,
+  livekitUrl: null,
+  roomName: null,
+  room: null,
+
+  joinChannel: async (channelId, guildId) => {
+    const existingRoom = get().room;
+    if (existingRoom) {
+      existingRoom.disconnect();
+    }
+    let room: Room | null = null;
+    set({
+      joining: true,
+      joiningChannelId: channelId,
+      connectionError: null,
+      connectionErrorChannelId: null,
+    });
+    try {
+      const { data } = await voiceApi.joinChannel(channelId);
+      room = new Room();
+      const normalizedUrl = normalizeLivekitUrl(data.url);
+
+      // Prevent long client retries from making voice joins feel stuck.
+      await Promise.race([
+        room.connect(normalizedUrl, data.token),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Voice connection timed out.')), 12000);
+        }),
+      ]);
+
+      await room.localParticipant.setMicrophoneEnabled(true).catch(() => { });
+      set({
+        connected: true,
+        joining: false,
+        joiningChannelId: null,
+        channelId,
+        guildId: guildId || null,
+        livekitToken: data.token,
+        livekitUrl: normalizedUrl,
+        roomName: data.room_name,
+        room,
+        participants: new Map(),
+      });
+    } catch (error) {
+      room?.disconnect();
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unable to connect to voice right now.';
+      set({
+        connected: false,
+        joining: false,
+        joiningChannelId: null,
+        channelId: null,
+        guildId: null,
+        room: null,
+        selfStream: false,
+        livekitToken: null,
+        livekitUrl: null,
+        roomName: null,
+        connectionError: message,
+        connectionErrorChannelId: channelId,
+      });
+      throw error;
+    }
+  },
+
+  leaveChannel: async () => {
+    const { channelId } = get();
+    if (channelId) {
+      await voiceApi.leaveChannel(channelId).catch((err) => {
+        console.warn('[voice] leave channel API error (continuing disconnect):', err);
+      });
+    }
+    set((state) => {
+      state.room?.disconnect();
+      return {
+        connected: false,
+        channelId: null,
+        guildId: null,
+        selfMute: false,
+        selfDeaf: false,
+        selfStream: false,
+        selfVideo: false,
+        participants: new Map(),
+        livekitToken: null,
+        livekitUrl: null,
+        roomName: null,
+        room: null,
+        joining: false,
+        joiningChannelId: null,
+        connectionError: null,
+        connectionErrorChannelId: null,
+      };
+    });
+  },
+
+  toggleMute: () =>
+    set((state) => {
+      const nextSelfMute = !state.selfMute;
+      state.room?.localParticipant.setMicrophoneEnabled(!nextSelfMute).catch(() => { });
+      return {
+        selfMute: nextSelfMute,
+        selfDeaf: nextSelfMute ? state.selfDeaf : false,
+      };
+    }),
+
+  toggleDeaf: () =>
+    set((state) => ({
+      selfDeaf: !state.selfDeaf,
+      selfMute: !state.selfDeaf ? true : state.selfMute,
+    })),
+
+  startStream: async (qualityPreset = '1080p60') => {
+    const { channelId, room } = get();
+    if (!channelId || !room) {
+      throw new Error('Voice connection is not ready');
+    }
+    try {
+      // 1. Register stream on server and get an upgraded token with
+      //    screen-share publish permissions.
+      const { data } = await voiceApi.startStream(channelId, { quality_preset: qualityPreset });
+
+      // 2. Reconnect to the LiveKit room with the upgraded stream token so
+      //    LiveKit grants us permission to publish screen-share tracks.
+      const normalizedUrl = normalizeLivekitUrl(data.url);
+      await room.disconnect();
+      await room.connect(normalizedUrl, data.token);
+
+      // Re-enable microphone after reconnect
+      await room.localParticipant.setMicrophoneEnabled(!get().selfMute).catch(() => { });
+
+      // 3. Now that we have the right permissions, start screen share
+      //    with resolution/framerate constraints matching the preset.
+      const presetMap: Record<string, { width: number; height: number; frameRate: number }> = {
+        '720p30': { width: 1280, height: 720, frameRate: 30 },
+        '1080p60': { width: 1920, height: 1080, frameRate: 60 },
+        '1440p60': { width: 2560, height: 1440, frameRate: 60 },
+        '4k60': { width: 3840, height: 2160, frameRate: 60 },
+      };
+      const capture = presetMap[qualityPreset] ?? presetMap['1080p60'];
+
+      await room.localParticipant.setScreenShareEnabled(true, {
+        audio: false,
+        selfBrowserSurface: 'include',
+        surfaceSwitching: 'include',
+        resolution: { width: capture.width, height: capture.height, frameRate: capture.frameRate },
+        contentHint: 'motion',
+      });
+      set({
+        selfStream: true,
+        livekitToken: data.token,
+        livekitUrl: normalizedUrl,
+        roomName: data.room_name,
+      });
+    } catch (error) {
+      await room.localParticipant.setScreenShareEnabled(false).catch(() => { });
+      set({ selfStream: false });
+      throw error;
+    }
+  },
+
+  stopStream: () =>
+    set((state) => {
+      state.room?.localParticipant.setScreenShareEnabled(false).catch(() => { });
+      return { selfStream: false };
+    }),
+
+  toggleVideo: () => set((state) => ({ selfVideo: !state.selfVideo })),
+  clearConnectionError: () => set({ connectionError: null, connectionErrorChannelId: null }),
+
+  handleVoiceStateUpdate: (voiceState) =>
+    set((state) => {
+      const participants = new Map(state.participants);
+      if (voiceState.channel_id) {
+        participants.set(voiceState.user_id, voiceState);
+      } else {
+        participants.delete(voiceState.user_id);
+      }
+      return { participants };
+    }),
+}));

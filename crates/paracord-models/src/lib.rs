@@ -1,0 +1,16 @@
+pub mod user;
+pub mod guild;
+pub mod channel;
+pub mod message;
+pub mod member;
+pub mod role;
+pub mod invite;
+pub mod presence;
+pub mod voice;
+pub mod permissions;
+pub mod gateway;
+pub mod ban;
+pub mod audit_log;
+pub mod emoji;
+pub mod attachment;
+pub mod embed;

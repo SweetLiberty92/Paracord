@@ -1,0 +1,318 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use anyhow::Result;
+use clap::Parser;
+use tracing_subscriber::EnvFilter;
+
+mod cli;
+mod config;
+#[cfg(feature = "embed-ui")]
+mod embedded_ui;
+mod livekit_proc;
+mod upnp;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("paracord=info,tower_http=debug")),
+        )
+        .init();
+
+    let args = cli::Args::parse();
+    let mut config = config::Config::load(&args.config)?;
+
+    // ── Auto-create data directories ─────────────────────────────────────────
+    ensure_data_dirs(&config);
+
+    // CLI --web-dir overrides config file
+    let web_dir: Option<PathBuf> = args
+        .web_dir
+        .or(config.server.web_dir.clone())
+        .map(PathBuf::from)
+        .filter(|p| {
+            if p.is_dir() {
+                true
+            } else {
+                tracing::warn!("Web UI directory {:?} does not exist, skipping static file serving", p);
+                false
+            }
+        });
+    std::env::set_var("PARACORD_SERVER_NAME", config.server.server_name.clone());
+    if config.federation.enabled {
+        std::env::set_var("PARACORD_FEDERATION_ENABLED", "true");
+        if let Some(path) = &config.federation.signing_key_path {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                std::env::set_var("PARACORD_FEDERATION_SIGNING_KEY_HEX", contents.trim());
+            }
+        }
+    }
+
+    // Parse the server's bind port for UPnP
+    let bind_port: u16 = config
+        .server
+        .bind_address
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+
+    let livekit_port: u16 = config
+        .livekit
+        .url
+        .rsplit(':')
+        .next()
+        .and_then(|s| s.trim_end_matches('/').parse().ok())
+        .unwrap_or(7880);
+
+    // UPnP auto port forwarding + public IP detection
+    let mut upnp_server_port = bind_port;
+    let mut upnp_livekit_port = livekit_port;
+    let mut upnp_status = "Disabled".to_string();
+    if config.network.upnp {
+        match upnp::setup_upnp(bind_port, livekit_port, config.network.upnp_lease_seconds).await {
+            Ok(result) => {
+                upnp_server_port = result.server_port;
+                upnp_livekit_port = result.livekit_port;
+                let ip = result.external_ip;
+                upnp_status = format!("Enabled (external IP: {})", ip);
+
+                // Auto-configure public URLs if not explicitly set
+                if config.server.public_url.is_none() {
+                    let url = format!("http://{}:{}", ip, upnp_server_port);
+                    config.server.public_url = Some(url);
+                }
+                if config.livekit.public_url.is_none() {
+                    let url = format!("ws://{}:{}", ip, upnp_livekit_port);
+                    config.livekit.public_url = Some(url);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("{}", e);
+                upnp_status = "Failed (ports may need manual forwarding)".to_string();
+            }
+        }
+    }
+
+    // Start managed LiveKit if no external one is configured
+    let mut managed_livekit = None;
+    let mut livekit_status = "External".to_string();
+    if config.livekit.url.contains("localhost") || config.livekit.url.contains("127.0.0.1") {
+        match livekit_proc::start_livekit(
+            &config.livekit.api_key,
+            &config.livekit.api_secret,
+            livekit_port,
+        ).await {
+            Some(proc) => {
+                livekit_status = format!("Managed (port {})", livekit_port);
+                managed_livekit = Some(proc);
+            }
+            None => {
+                livekit_status = "Not available (binary not found)".to_string();
+            }
+        }
+    }
+
+    let db = paracord_db::create_pool(&config.database.url, config.database.max_connections).await?;
+    paracord_db::run_migrations(&db).await?;
+
+    // ── Load runtime settings from database ─────────────────────────────────
+    let runtime = load_runtime_settings(&db).await;
+    let runtime = Arc::new(RwLock::new(runtime));
+
+    // Create LiveKit config for the media layer
+    let livekit_config = Arc::new(paracord_media::LiveKitConfig {
+        api_key: config.livekit.api_key.clone(),
+        api_secret: config.livekit.api_secret.clone(),
+        url: config.livekit.url.clone(),
+        http_url: config.livekit.http_url.clone(),
+    });
+
+    let voice = Arc::new(paracord_media::VoiceManager::new(livekit_config));
+    let storage = Arc::new(paracord_media::StorageManager::new(
+        paracord_media::StorageConfig {
+            base_path: config.media.storage_path.clone().into(),
+            max_file_size: config.media.max_file_size,
+            p2p_threshold: config.media.p2p_threshold,
+            allowed_extensions: None,
+        },
+    ));
+
+    // Resolve the public LiveKit URL
+    let livekit_public_url = config
+        .livekit
+        .public_url
+        .clone()
+        .unwrap_or_else(|| config.livekit.url.clone());
+
+    // Set PARACORD_PUBLIC_URL env var so CORS layer can pick it up
+    if let Some(ref public_url) = config.server.public_url {
+        std::env::set_var("PARACORD_PUBLIC_URL", public_url);
+    }
+
+    let state = paracord_core::AppState {
+        db,
+        event_bus: paracord_core::events::EventBus::default(),
+        runtime,
+        config: paracord_core::AppConfig {
+            jwt_secret: config.auth.jwt_secret.clone(),
+            jwt_expiry_seconds: config.auth.jwt_expiry_seconds,
+            registration_enabled: config.auth.registration_enabled,
+            storage_path: config.storage.path.clone(),
+            max_upload_size: config.storage.max_upload_size,
+            livekit_api_key: config.livekit.api_key.clone(),
+            livekit_api_secret: config.livekit.api_secret.clone(),
+            livekit_url: config.livekit.url.clone(),
+            livekit_http_url: config.livekit.http_url.clone(),
+            livekit_public_url,
+            public_url: config.server.public_url.clone(),
+            media_storage_path: config.media.storage_path.clone(),
+            media_max_file_size: config.media.max_file_size,
+            media_p2p_threshold: config.media.p2p_threshold,
+        },
+        voice,
+        storage,
+    };
+
+    let router = paracord_api::build_router()
+        .merge(paracord_ws::gateway_router())
+        .with_state(state);
+
+    // ── Web UI serving ───────────────────────────────────────────────────────
+    let web_ui_status;
+    let app = if let Some(ref dir) = web_dir {
+        let index_path = dir.join("index.html");
+        let spa_fallback = tower_http::services::ServeFile::new(&index_path);
+        let serve_dir = tower_http::services::ServeDir::new(dir)
+            .not_found_service(spa_fallback);
+        web_ui_status = format!("Serving from {:?}", dir);
+        router.fallback_service(serve_dir)
+    } else {
+        #[cfg(feature = "embed-ui")]
+        {
+            web_ui_status = "Embedded".to_string();
+            router.merge(embedded_ui::router())
+        }
+        #[cfg(not(feature = "embed-ui"))]
+        {
+            web_ui_status = "None (API-only mode)".to_string();
+            router
+        }
+    };
+
+    let listener = tokio::net::TcpListener::bind(&config.server.bind_address).await?;
+
+    // ── Startup banner ───────────────────────────────────────────────────────
+    print_startup_banner(
+        &config.server.bind_address,
+        &config.server.public_url,
+        &livekit_status,
+        &config.database.url,
+        &upnp_status,
+        &web_ui_status,
+    );
+
+    // Graceful shutdown: clean up UPnP on ctrl-c
+    let upnp_enabled = config.network.upnp;
+    let shutdown_signal = async move {
+        let _ = tokio::signal::ctrl_c().await;
+        println!();
+        tracing::info!("Shutting down...");
+        if let Some(mut lk) = managed_livekit {
+            lk.kill().await;
+        }
+        if upnp_enabled {
+            upnp::cleanup_upnp(upnp_server_port, upnp_livekit_port).await;
+        }
+    };
+
+    axum::serve(listener, app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal)
+        .await?;
+
+    Ok(())
+}
+
+/// Ensure all data directories exist before the server starts.
+fn ensure_data_dirs(config: &config::Config) {
+    // Storage directories
+    for dir in [&config.storage.path, &config.media.storage_path] {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            tracing::warn!("Could not create directory '{}': {}", dir, e);
+        }
+    }
+
+    // Database parent directory
+    if let Some(db_path) = config
+        .database
+        .url
+        .strip_prefix("sqlite://")
+        .and_then(|s| s.split('?').next())
+    {
+        if let Some(parent) = std::path::Path::new(db_path).parent() {
+            if !parent.as_os_str().is_empty() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
+    }
+}
+
+async fn load_runtime_settings(db: &paracord_db::DbPool) -> paracord_core::RuntimeSettings {
+    let mut settings = paracord_core::RuntimeSettings::default();
+
+    if let Ok(all) = paracord_db::server_settings::get_all_settings(db).await {
+        for (key, value) in all {
+            match key.as_str() {
+                "registration_enabled" => settings.registration_enabled = value == "true",
+                "server_name" => settings.server_name = value,
+                "server_description" => settings.server_description = value,
+                "max_guilds_per_user" => {
+                    if let Ok(v) = value.parse() {
+                        settings.max_guilds_per_user = v;
+                    }
+                }
+                "max_members_per_guild" => {
+                    if let Ok(v) = value.parse() {
+                        settings.max_members_per_guild = v;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    settings
+}
+
+fn print_startup_banner(
+    bind_address: &str,
+    public_url: &Option<String>,
+    livekit_status: &str,
+    db_url: &str,
+    upnp_status: &str,
+    web_ui: &str,
+) {
+    println!();
+    println!("  ____                                     _");
+    println!(" |  _ \\ __ _ _ __ __ _  ___ ___  _ __ __| |");
+    println!(" | |_) / _` | '__/ _` |/ __/ _ \\| '__/ _` |");
+    println!(" |  __/ (_| | | | (_| | (_| (_) | | | (_| |");
+    println!(" |_|   \\__,_|_|  \\__,_|\\___\\___/|_|  \\__,_|");
+    println!();
+    println!("  Listening:   http://{}", bind_address);
+    if let Some(url) = public_url {
+        println!("  Public URL:  {}", url);
+        println!();
+        println!("  ╔══════════════════════════════════════════════════╗");
+        println!("  ║  Share this with friends: {:<24}║", url);
+        println!("  ╚══════════════════════════════════════════════════╝");
+    }
+    println!();
+    println!("  Database:    {}", db_url);
+    println!("  LiveKit:     {}", livekit_status);
+    println!("  UPnP:        {}", upnp_status);
+    println!("  Web UI:      {}", web_ui);
+    println!();
+}

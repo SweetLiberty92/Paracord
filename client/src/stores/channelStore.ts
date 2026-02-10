@@ -1,0 +1,147 @@
+import { create } from 'zustand';
+import type { Channel } from '../types';
+import { guildApi } from '../api/guilds';
+import { channelApi } from '../api/channels';
+
+function normalizeChannel(channel: Channel): Channel {
+  return {
+    ...channel,
+    type: (channel.type ?? channel.channel_type ?? 0) as Channel['type'],
+    channel_type: channel.channel_type ?? channel.type ?? 0,
+    created_at: channel.created_at ?? new Date().toISOString(),
+  };
+}
+
+interface ChannelState {
+  // Channels indexed by guild ID. Key '' is used for DMs.
+  channelsByGuild: Record<string, Channel[]>;
+  // Flat accessor for the currently viewed guild (kept for backward compat)
+  channels: Channel[];
+  selectedChannelId: string | null;
+  selectedGuildId: string | null;
+  isLoading: boolean;
+
+  fetchChannels: (guildId: string) => Promise<void>;
+  selectChannel: (channelId: string | null) => void;
+  selectGuild: (guildId: string | null) => void;
+  setChannels: (channels: Channel[]) => void;
+  setDmChannels: (channels: Channel[]) => void;
+  createChannel: (guildId: string, data: Parameters<typeof guildApi.createChannel>[1]) => Promise<Channel>;
+  updateChannelData: (channelId: string, data: Partial<Channel>) => Promise<void>;
+  deleteChannel: (channelId: string) => Promise<void>;
+
+  // Gateway event handlers
+  addChannel: (channel: Channel) => void;
+  updateChannel: (channel: Channel) => void;
+  removeChannel: (guildId: string, channelId: string) => void;
+}
+
+export const useChannelStore = create<ChannelState>()((set, _get) => ({
+  channelsByGuild: {},
+  channels: [],
+  selectedChannelId: null,
+  selectedGuildId: null,
+  isLoading: false,
+
+  fetchChannels: async (guildId) => {
+    set({ isLoading: true });
+    try {
+      const { data } = await guildApi.getChannels(guildId);
+      const sorted = data.map(normalizeChannel).sort((a, b) => a.position - b.position);
+      set((state) => {
+        const channelsByGuild = { ...state.channelsByGuild, [guildId]: sorted };
+        const channels = state.selectedGuildId === guildId ? sorted : state.channels;
+        return { channelsByGuild, channels, isLoading: false };
+      });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  selectChannel: (channelId) => set({ selectedChannelId: channelId }),
+
+  selectGuild: (guildId) =>
+    set((state) => ({
+      selectedGuildId: guildId,
+      channels: guildId ? state.channelsByGuild[guildId] || [] : [],
+    })),
+
+  setChannels: (channels) => set({ channels }),
+  setDmChannels: (channels) =>
+    set((state) => ({
+      channelsByGuild: { ...state.channelsByGuild, '': channels.map(normalizeChannel) },
+      channels: state.selectedGuildId ? state.channels : channels.map(normalizeChannel),
+    })),
+
+  createChannel: async (guildId, channelData) => {
+    const { data } = await guildApi.createChannel(guildId, channelData);
+    set((state) => {
+      const existing = state.channelsByGuild[guildId] || [];
+      const updated = [...existing, normalizeChannel(data)].sort((a, b) => a.position - b.position);
+      const channelsByGuild = { ...state.channelsByGuild, [guildId]: updated };
+      const channels = state.selectedGuildId === guildId ? updated : state.channels;
+      return { channelsByGuild, channels };
+    });
+    return data;
+  },
+
+  updateChannelData: async (channelId, data) => {
+    const { data: updated } = await channelApi.update(channelId, data);
+    set((state) => {
+      const normalized = normalizeChannel(updated);
+      const guildId = normalized.guild_id || '';
+      const existing = state.channelsByGuild[guildId] || [];
+      const list = existing.map((c) => (c.id === channelId ? normalized : c));
+      const channelsByGuild = { ...state.channelsByGuild, [guildId]: list };
+      const channels = state.selectedGuildId === guildId ? list : state.channels;
+      return { channelsByGuild, channels };
+    });
+  },
+
+  deleteChannel: async (channelId) => {
+    await channelApi.delete(channelId);
+    set((state) => {
+      const newByGuild: Record<string, Channel[]> = {};
+      for (const [gid, chs] of Object.entries(state.channelsByGuild)) {
+        newByGuild[gid] = chs.filter((c) => c.id !== channelId);
+      }
+      const channels = state.channels.filter((c) => c.id !== channelId);
+      return { channelsByGuild: newByGuild, channels };
+    });
+  },
+
+  addChannel: (channel) =>
+    set((state) => {
+      const normalized = normalizeChannel(channel);
+      const guildId = normalized.guild_id || '';
+      const existing = state.channelsByGuild[guildId] || [];
+      if (existing.some((c) => c.id === normalized.id)) return state;
+      const updated = [...existing, normalized].sort((a, b) => a.position - b.position);
+      const channelsByGuild = { ...state.channelsByGuild, [guildId]: updated };
+      const channels = state.selectedGuildId === guildId ? updated : state.channels;
+      return { channelsByGuild, channels };
+    }),
+
+  updateChannel: (channel) =>
+    set((state) => {
+      const normalized = normalizeChannel(channel);
+      const guildId = normalized.guild_id || '';
+      const existing = state.channelsByGuild[guildId] || [];
+      const updated = existing
+        .map((c) => (c.id === normalized.id ? normalized : c))
+        .sort((a, b) => a.position - b.position);
+      const channelsByGuild = { ...state.channelsByGuild, [guildId]: updated };
+      const channels = state.selectedGuildId === guildId ? updated : state.channels;
+      return { channelsByGuild, channels };
+    }),
+
+  removeChannel: (guildId, channelId) =>
+    set((state) => {
+      const gid = guildId || '';
+      const existing = state.channelsByGuild[gid] || [];
+      const updated = existing.filter((c) => c.id !== channelId);
+      const channelsByGuild = { ...state.channelsByGuild, [gid]: updated };
+      const channels = state.selectedGuildId === gid ? updated : state.channels;
+      return { channelsByGuild, channels };
+    }),
+}));

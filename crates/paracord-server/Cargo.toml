@@ -1,0 +1,38 @@
+[package]
+name = "paracord-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "paracord-server"
+path = "src/main.rs"
+
+[dependencies]
+paracord-api = { workspace = true }
+paracord-ws = { workspace = true }
+paracord-core = { workspace = true }
+paracord-db = { workspace = true }
+paracord-federation = { workspace = true }
+paracord-models = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+paracord-media = { workspace = true }
+anyhow = { workspace = true }
+tower-http = { workspace = true }
+igd-next = { workspace = true }
+reqwest = { workspace = true }
+which = { workspace = true }
+rand = { workspace = true }
+rust-embed = { workspace = true, optional = true }
+mime_guess = { workspace = true, optional = true }
+
+[features]
+default = ["embed-ui"]
+embed-ui = ["dep:rust-embed", "dep:mime_guess"]

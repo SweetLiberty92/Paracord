@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+jobs:
+  rust:
+    name: Rust Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      # Build client so rust-embed can embed dist/ (needed for default features)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build client
+        working-directory: client
+        run: npm ci && npm run build
+      - name: Check
+        run: cargo check --workspace
+      - name: Test
+        run: cargo test --workspace --all-targets
+      - name: Build server binary
+        run: cargo build --release --bin paracord-server
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+      - name: Format
+        run: cargo fmt --all -- --check
+
+  client:
+    name: Client Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: client/package-lock.json
+      - name: Install dependencies
+        working-directory: client
+        run: npm ci
+      - name: Type check
+        working-directory: client
+        run: npm run typecheck
+      - name: Test
+        working-directory: client
+        run: npm run test --if-present
+      - name: Build
+        working-directory: client
+        run: npm run build

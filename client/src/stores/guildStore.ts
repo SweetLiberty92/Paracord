@@ -1,0 +1,94 @@
+import { create } from 'zustand';
+import type { Guild } from '../types';
+import { guildApi } from '../api/guilds';
+
+interface GuildState {
+  guilds: Guild[];
+  selectedGuildId: string | null;
+  isLoading: boolean;
+
+  fetchGuilds: () => Promise<void>;
+  selectGuild: (id: string | null) => void;
+  createGuild: (name: string, icon?: string) => Promise<Guild>;
+  updateGuild: (id: string, data: Partial<Guild>) => Promise<void>;
+  deleteGuild: (id: string) => Promise<void>;
+  leaveGuild: (id: string) => Promise<void>;
+  setGuilds: (guilds: Guild[]) => void;
+  addGuild: (guild: Guild) => void;
+  removeGuild: (id: string) => void;
+  updateGuildData: (id: string, data: Partial<Guild>) => void;
+}
+
+export const useGuildStore = create<GuildState>()((set, _get) => ({
+  guilds: [],
+  selectedGuildId: null,
+  isLoading: false,
+
+  fetchGuilds: async () => {
+    set({ isLoading: true });
+    try {
+      const { data } = await guildApi.getAll();
+      set({ guilds: data, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  selectGuild: (id) => set({ selectedGuildId: id }),
+
+  setGuilds: (guilds) => set({ guilds }),
+
+  createGuild: async (name, icon) => {
+    const { data } = await guildApi.create({ name, icon });
+    set((state) => ({ guilds: [...state.guilds, data] }));
+    return data;
+  },
+
+  updateGuild: async (id, guildData) => {
+    const { data } = await guildApi.update(id, guildData);
+    set((state) => ({
+      guilds: state.guilds.map((g) => (g.id === id ? data : g)),
+    }));
+  },
+
+  deleteGuild: async (id) => {
+    await guildApi.delete(id);
+    set((state) => ({
+      guilds: state.guilds.filter((g) => g.id !== id),
+      selectedGuildId: state.selectedGuildId === id ? null : state.selectedGuildId,
+    }));
+  },
+
+  leaveGuild: async (id) => {
+    await guildApi.leaveGuild(id);
+    set((state) => ({
+      guilds: state.guilds.filter((g) => g.id !== id),
+      selectedGuildId: state.selectedGuildId === id ? null : state.selectedGuildId,
+    }));
+  },
+
+  addGuild: (guild) =>
+    set((state) => {
+      const normalized = {
+        ...guild,
+        created_at: guild.created_at ?? new Date().toISOString(),
+        member_count: guild.member_count ?? 0,
+        features: guild.features ?? [],
+      };
+      if (state.guilds.some((g) => g.id === guild.id)) {
+        return { guilds: state.guilds.map((g) => (g.id === guild.id ? { ...g, ...normalized } : g)) };
+      }
+      return { guilds: [...state.guilds, normalized] };
+    }),
+
+  removeGuild: (id) =>
+    set((state) => ({
+      guilds: state.guilds.filter((g) => g.id !== id),
+      selectedGuildId: state.selectedGuildId === id ? null : state.selectedGuildId,
+    })),
+
+  updateGuildData: (id, data) =>
+    set((state) => ({
+      guilds: state.guilds.map((g) => (g.id === id ? { ...g, ...data } : g)),
+    })),
+}));

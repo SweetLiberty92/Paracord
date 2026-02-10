@@ -1,0 +1,89 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/paracord-server",
+    "crates/paracord-api",
+    "crates/paracord-ws",
+    "crates/paracord-core",
+    "crates/paracord-db",
+    "crates/paracord-federation",
+    "crates/paracord-models",
+    "crates/paracord-media",
+    "crates/paracord-util",
+]
+exclude = [
+    "client/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["ws", "multipart"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip", "fs"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Config
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# IDs & permissions
+bitflags = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Crypto
+rand = "0.8"
+ed25519-dalek = { version = "2", features = ["serde"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Networking
+igd-next = { version = "0.15", features = ["aio_tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+# Process management
+which = "7"
+
+# Embedded web UI
+rust-embed = "8"
+mime_guess = "2"
+
+# Workspace crates
+paracord-api = { path = "crates/paracord-api" }
+paracord-ws = { path = "crates/paracord-ws" }
+paracord-core = { path = "crates/paracord-core" }
+paracord-db = { path = "crates/paracord-db" }
+paracord-federation = { path = "crates/paracord-federation" }
+paracord-models = { path = "crates/paracord-models" }
+paracord-media = { path = "crates/paracord-media" }
+paracord-util = { path = "crates/paracord-util" }
