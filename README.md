@@ -54,7 +54,7 @@ That's it. UPnP auto-forwards ports on most home routers. If your router doesn't
 ## Development
 
 ### Prerequisites
-- [Rust 1.85+](https://rustup.rs/)
+- [Rust 1.91+](https://rustup.rs/)
 - [Node.js 22+](https://nodejs.org/)
 
 ### Running Locally
