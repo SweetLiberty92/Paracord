@@ -11,7 +11,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: "true"
-  LIVEKIT_VERSION: "v1.8.3"
+  LIVEKIT_VERSION: "v1.9.11"
 
 jobs:
   # ── Build server binary with embedded web UI + LiveKit ────────────────────
@@ -57,7 +57,8 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ env.LIVEKIT_VERSION }}"
-          $url = "https://github.com/livekit/livekit/releases/download/${version}/livekit_${version}_windows_amd64.zip"
+          $versionNum = $version.TrimStart("v")
+          $url = "https://github.com/livekit/livekit/releases/download/${version}/livekit_${versionNum}_windows_amd64.zip"
           Write-Host "Downloading LiveKit from: $url"
           Invoke-WebRequest -Uri $url -OutFile livekit.zip
           Expand-Archive livekit.zip -DestinationPath livekit-extracted -Force
