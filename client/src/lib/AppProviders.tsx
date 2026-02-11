@@ -5,6 +5,7 @@ import { useVoiceKeybinds } from '../hooks/useVoiceKeybinds';
 import { useAuthStore } from '../stores/authStore';
 import { useGuildStore } from '../stores/guildStore';
 import { useVoiceStore } from '../stores/voiceStore';
+import { RestartBanner } from '../components/RestartBanner';
 
 function AppInitializer({ children }: { children: ReactNode }) {
   // Initialize gateway connection when authenticated
@@ -45,7 +46,12 @@ function AppInitializer({ children }: { children: ReactNode }) {
     applyAudioOutputDevice,
   ]);
 
-  return <>{children}</>;
+  return (
+    <>
+      <RestartBanner />
+      {children}
+    </>
+  );
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {

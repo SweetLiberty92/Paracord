@@ -107,16 +107,17 @@ fn write_livekit_config(
         // advertises the machine's actual local/loopback addresses.
         lines.push("    use_external_ip: false".to_string());
     } else {
-        // use_external_ip lets LiveKit discover the public IP via STUN and
-        // add it as a server-reflexive candidate.  We intentionally do NOT
-        // set `node_ip` here — setting it rewrites *all* ICE candidate
-        // addresses to the public IP, which breaks media for clients on the
-        // same LAN as the server (they can't reach the public IP without
-        // hairpin NAT).  By omitting `node_ip`, LiveKit keeps the LAN IP
-        // as a host candidate *and* adds the STUN-discovered public IP as
-        // an srflx candidate, so both LAN and remote clients get a
-        // reachable address.
-        lines.push("    use_external_ip: true".to_string());
+        // Disable use_external_ip so LiveKit advertises the real LAN IP
+        // (e.g. 192.168.x.x) as a host candidate.  When use_external_ip
+        // is true, LiveKit rewrites ALL host candidate IPs to the
+        // STUN-discovered public IP, which forces LAN clients through
+        // hairpin NAT — unreliable on most consumer routers and a common
+        // cause of one-way audio.
+        //
+        // Remote/internet clients are served by the TURN relay (configured
+        // below with `domain: <external_ip>`), which provides a working
+        // media path through the port-forwarded server port.
+        lines.push("    use_external_ip: false".to_string());
     }
 
     // UDP mux on the server port (e.g. 8080).  Paracord only binds TCP
@@ -128,36 +129,25 @@ fn write_livekit_config(
     let ice_tcp_port = livekit_port + 1;
     lines.push(format!("    tcp_port: {ice_tcp_port}"));
 
-    if is_local_only {
-        // Local mode: allow all candidates including loopback so that
-        // connections from localhost and LAN both work.
-        lines.push("    enable_loopback_candidate: true".to_string());
-        // Only exclude Docker/WSL virtual network ranges that are never
-        // useful for real clients.  Keep 192.168.0.0/16 and other common
-        // LAN ranges available.
+    // Enable loopback candidates so connections from the server host
+    // itself also work (e.g. testing from the same machine).
+    lines.push("    enable_loopback_candidate: true".to_string());
+
+    if let Some(lip) = local_ip {
+        // Whitelist only the real LAN IP (and loopback) so Docker, WSL,
+        // and other virtual interfaces are never advertised as ICE
+        // candidates.
+        lines.push("    ips:".to_string());
+        lines.push("        includes:".to_string());
+        lines.push(format!("            - {lip}/32"));
+        lines.push("            - 127.0.0.1/32".to_string());
+    } else {
+        // No local IP detected — exclude known virtual ranges instead.
         lines.push("    ips:".to_string());
         lines.push("        excludes:".to_string());
         lines.push("            - 172.17.0.0/16".to_string()); // Docker default bridge
         lines.push("            - 172.18.0.0/16".to_string()); // Docker user networks
-    } else {
-        // Internet-facing mode: advertise only the detected local LAN IP
-        // (which maps to the public IP via NAT) and exclude virtual/loopback
-        // ranges that confuse remote clients.
-        lines.push("    enable_loopback_candidate: false".to_string());
-        if let Some(lip) = local_ip {
-            // Use includes to whitelist only the real LAN IP so Docker,
-            // WSL, and loopback addresses are never sent as candidates.
-            lines.push("    ips:".to_string());
-            lines.push("        includes:".to_string());
-            lines.push(format!("            - {lip}/32"));
-        } else {
-            // No local IP detected — fall back to excluding known virtual ranges.
-            lines.push("    ips:".to_string());
-            lines.push("        excludes:".to_string());
-            lines.push("            - 172.17.0.0/16".to_string());
-            lines.push("            - 172.18.0.0/16".to_string());
-            lines.push("            - 127.0.0.0/8".to_string());
-        }
+        lines.push("            - 172.24.0.0/16".to_string()); // WSL virtual network
     }
 
     lines.push("keys:".to_string());

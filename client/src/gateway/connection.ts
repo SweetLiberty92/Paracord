@@ -8,6 +8,7 @@ import { usePresenceStore } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useTypingStore } from '../stores/typingStore';
 import { useRelationshipStore } from '../stores/relationshipStore';
+import { useUIStore } from '../stores/uiStore';
 import { GatewayEvents } from './events';
 import { getStoredServerUrl } from '../lib/apiBaseUrl';
 
@@ -131,6 +132,7 @@ class GatewayConnection {
     switch (event) {
       case GatewayEvents.READY:
         this.sessionId = data.session_id;
+        useUIStore.getState().setServerRestarting(false);
         useAuthStore.getState().fetchUser();
         data.guilds?.forEach((g: any) => {
           useGuildStore.getState().addGuild({
@@ -229,6 +231,10 @@ class GatewayConnection {
       case GatewayEvents.RELATIONSHIP_ADD:
       case GatewayEvents.RELATIONSHIP_REMOVE:
         void useRelationshipStore.getState().fetchRelationships();
+        break;
+
+      case GatewayEvents.SERVER_RESTART:
+        useUIStore.getState().setServerRestarting(true);
         break;
     }
   }

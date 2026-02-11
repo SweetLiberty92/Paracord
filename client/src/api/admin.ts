@@ -50,4 +50,7 @@ export const adminApi = {
 
   deleteGuild: (guildId: string) =>
     apiClient.delete(`/admin/guilds/${guildId}`),
+
+  restartUpdate: () =>
+    apiClient.post<{ status: string }>('/admin/restart-update'),
 };

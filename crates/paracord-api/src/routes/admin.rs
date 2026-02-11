@@ -11,6 +11,103 @@ use std::collections::HashMap;
 use crate::error::ApiError;
 use crate::middleware::AdminUser;
 
+// ── Restart & Update ─────────────────────────────────────────────────
+
+pub async fn restart_update(
+    State(state): State<AppState>,
+    _admin: AdminUser,
+) -> Result<Json<Value>, ApiError> {
+    // Resolve the repo root (parent of the `target` directory that contains our binary)
+    let exe = std::env::current_exe()
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Cannot determine exe path: {}", e)))?;
+    let repo_root = exe
+        .ancestors()
+        .find(|p| p.join("Cargo.toml").is_file() && p.join("client").is_dir())
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("Cannot determine repo root from exe path")))?
+        .to_path_buf();
+
+    let repo_root_str = repo_root.display().to_string();
+    let exe_str = exe.display().to_string();
+
+    // Write a PowerShell updater script to a temp file
+    let script = format!(
+        r#"# Paracord auto-update script
+Start-Sleep -Seconds 3
+
+Set-Location -Path "{repo_root}"
+
+Write-Host "Pulling latest code..."
+git pull origin main
+
+Write-Host "Rebuilding client..."
+Set-Location -Path "{repo_root}\client"
+npm install
+npm run build
+Set-Location -Path "{repo_root}"
+
+Write-Host "Rebuilding server..."
+cargo build --release --bin paracord-server
+
+Write-Host "Starting server..."
+Start-Process -FilePath "{exe}" -WorkingDirectory "{repo_root}" -WindowStyle Normal
+
+Write-Host "Update complete."
+"#,
+        repo_root = repo_root_str,
+        exe = exe_str,
+    );
+
+    let script_path = std::env::temp_dir().join("paracord-update.ps1");
+    std::fs::write(&script_path, &script)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to write update script: {}", e)))?;
+
+    // Spawn the PowerShell script as a detached process
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+
+        std::process::Command::new("powershell")
+            .args(["-ExecutionPolicy", "Bypass", "-File", &script_path.display().to_string()])
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+            .spawn()
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to spawn updater: {}", e)))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Fallback for non-Windows: spawn a bash script instead
+        let sh_script = format!(
+            "#!/bin/sh\nsleep 3\ncd '{}'\ngit pull origin main\ncd client && npm install && npm run build && cd ..\ncargo build --release --bin paracord-server\n'{}' &\n",
+            repo_root_str, exe_str,
+        );
+        let sh_path = std::env::temp_dir().join("paracord-update.sh");
+        std::fs::write(&sh_path, &sh_script)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to write update script: {}", e)))?;
+        std::process::Command::new("sh")
+            .arg(&sh_path)
+            .spawn()
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to spawn updater: {}", e)))?;
+    }
+
+    // Broadcast SERVER_RESTART to all connected clients
+    state.event_bus.dispatch(
+        "SERVER_RESTART",
+        json!({"message": "Server is restarting for an update..."}),
+        None,
+    );
+
+    // Trigger graceful shutdown after a brief delay to allow the WS broadcast to flush
+    let shutdown = state.shutdown.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        shutdown.notify_one();
+    });
+
+    Ok(Json(json!({"status": "restarting"})))
+}
+
 // ── Stats ───────────────────────────────────────────────────────────────
 
 pub async fn get_stats(

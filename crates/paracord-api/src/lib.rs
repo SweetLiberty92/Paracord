@@ -241,6 +241,10 @@ pub fn build_router() -> Router<AppState> {
             "/api/v1/admin/guilds/{guild_id}",
             delete(routes::admin::delete_guild),
         )
+        .route(
+            "/api/v1/admin/restart-update",
+            post(routes::admin::restart_update),
+        )
         // LiveKit reverse proxy (voice signaling + Twirp API on the same port)
         .route("/livekit/{*path}", any(routes::livekit_proxy::livekit_proxy))
         // Middleware layers

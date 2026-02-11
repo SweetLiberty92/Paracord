@@ -216,10 +216,13 @@ async fn main() -> Result<()> {
             format!("ws://{}/livekit", bind_for_clients)
         });
 
+    let shutdown_notify = Arc::new(tokio::sync::Notify::new());
+
     let state = paracord_core::AppState {
         db,
         event_bus: paracord_core::events::EventBus::default(),
         runtime,
+        shutdown: shutdown_notify.clone(),
         config: paracord_core::AppConfig {
             jwt_secret: config.auth.jwt_secret.clone(),
             jwt_expiry_seconds: config.auth.jwt_expiry_seconds,
@@ -281,12 +284,18 @@ async fn main() -> Result<()> {
         bind_port,
     );
 
-    // Graceful shutdown: clean up UPnP on ctrl-c
+    // Graceful shutdown: clean up UPnP on ctrl-c or API-triggered restart
     let upnp_enabled = config.network.upnp;
     let shutdown_signal = async move {
-        let _ = tokio::signal::ctrl_c().await;
-        println!();
-        tracing::info!("Shutting down...");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                println!();
+                tracing::info!("Shutting down (ctrl-c)...");
+            }
+            _ = shutdown_notify.notified() => {
+                tracing::info!("Shutting down (restart requested via API)...");
+            }
+        }
         if let Some(mut lk) = managed_livekit {
             lk.kill().await;
         }

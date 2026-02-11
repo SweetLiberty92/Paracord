@@ -55,6 +55,9 @@ export const GatewayEvents = {
   // Relationship events
   RELATIONSHIP_ADD: 'RELATIONSHIP_ADD',
   RELATIONSHIP_REMOVE: 'RELATIONSHIP_REMOVE',
+
+  // Server events
+  SERVER_RESTART: 'SERVER_RESTART',
 } as const;
 
 export type GatewayEvent = (typeof GatewayEvents)[keyof typeof GatewayEvents];

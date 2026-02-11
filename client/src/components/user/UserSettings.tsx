@@ -5,19 +5,22 @@ import { useUIStore } from '../../stores/uiStore';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
 import { APP_NAME } from '../../lib/constants';
+import { isAdmin } from '../../types';
+import { adminApi } from '../../api/admin';
 
 interface UserSettingsProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'account' | 'appearance' | 'voice' | 'notifications' | 'keybinds' | 'about';
+type SettingsSection = 'account' | 'appearance' | 'voice' | 'notifications' | 'keybinds' | 'about' | 'server';
 
-const NAV_ITEMS: { id: SettingsSection; label: string }[] = [
+const NAV_ITEMS: { id: SettingsSection; label: string; adminOnly?: boolean }[] = [
   { id: 'account', label: 'My Account' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'voice', label: 'Voice & Video' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'keybinds', label: 'Keybinds' },
+  { id: 'server', label: 'Server', adminOnly: true },
   { id: 'about', label: 'About' },
 ];
 
@@ -51,6 +54,9 @@ export function UserSettings({ onClose }: UserSettingsProps) {
   } = useMediaDevices();
   const applyAudioInputDevice = useVoiceStore((s) => s.applyAudioInputDevice);
   const applyAudioOutputDevice = useVoiceStore((s) => s.applyAudioOutputDevice);
+  const userIsAdmin = user ? isAdmin(user.flags ?? 0) : false;
+  const [restartConfirm, setRestartConfirm] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     void fetchSettings();
@@ -177,7 +183,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
           <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
             User Settings
           </div>
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.filter(item => !item.adminOnly || userIsAdmin).map(item => (
             <button
               key={item.id}
               onClick={() => setActiveSection(item.id)}
@@ -476,6 +482,61 @@ export function UserSettings({ onClose }: UserSettingsProps) {
             <button className="btn-primary mt-5" onClick={() => void saveSettings()} disabled={saving}>
               {saving ? 'Saving...' : 'Save Keybinds'}
             </button>
+          </div>
+        )}
+
+        {activeSection === 'server' && userIsAdmin && (
+          <div className="settings-surface-card w-full min-h-[calc(100vh-13.5rem)]">
+            <h2 className="settings-section-title mb-6">Server</h2>
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Update & Restart</div>
+                <div className="mt-2 text-sm text-text-muted">
+                  Pull the latest code from git, rebuild the client and server, then restart. All connected users will be temporarily disconnected.
+                </div>
+                <div className="mt-4">
+                  {!restartConfirm ? (
+                    <button
+                      className="btn-primary"
+                      style={{ backgroundColor: 'var(--accent-warning, #f59e0b)' }}
+                      onClick={() => setRestartConfirm(true)}
+                      disabled={restarting}
+                    >
+                      Update & Restart Server
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-text-primary">Are you sure?</span>
+                      <button
+                        className="btn-primary"
+                        style={{ backgroundColor: 'var(--accent-danger)' }}
+                        disabled={restarting}
+                        onClick={async () => {
+                          setRestarting(true);
+                          try {
+                            await adminApi.restartUpdate();
+                          } catch {
+                            setRestarting(false);
+                            setRestartConfirm(false);
+                            setStatusText('Failed to trigger restart.');
+                          }
+                        }}
+                      >
+                        {restarting ? 'Restarting...' : 'Yes, restart now'}
+                      </button>
+                      <button
+                        className="btn-primary"
+                        style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                        onClick={() => setRestartConfirm(false)}
+                        disabled={restarting}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

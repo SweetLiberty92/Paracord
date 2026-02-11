@@ -9,7 +9,7 @@ pub mod user;
 pub mod admin;
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use paracord_db::DbPool;
 use paracord_media::{VoiceManager, StorageManager};
 
@@ -50,6 +50,7 @@ pub struct AppState {
     pub runtime: Arc<RwLock<RuntimeSettings>>,
     pub voice: Arc<VoiceManager>,
     pub storage: Arc<StorageManager>,
+    pub shutdown: Arc<Notify>,
 }
 
 #[derive(Clone, Debug)]
