@@ -17,6 +17,8 @@ serde_json = "1"
 
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.22"
+webview2-com = "0.38"
+windows-core = "0.61"
 
 [features]
 default = ["custom-protocol"]
