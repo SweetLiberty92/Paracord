@@ -49,6 +49,14 @@ CLAUDE.md
 livekit*.zip
 livekit-extracted/
 
+# Release archives
+paracord-server-*.zip
+paracord-server-*.tar.gz
+
+# Installer build outputs
+installer/output/
+installer/*.exe
+
 # Dev dumps
 client/ui_dump.html
 client/ui_mock_dump.html

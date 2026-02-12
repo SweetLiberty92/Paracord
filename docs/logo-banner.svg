@@ -66,27 +66,27 @@
     <!-- Full rope path definition (used by all rope layers) -->
     <!-- The rope weaves sinusoidally, centered on y=105 (text baseline area) -->
 
-    <!-- Clip path: only the areas BETWEEN letters (where rope is in front) -->
-    <!-- Letter approximate x-positions at font-size 88:
-         P: 115-170, A: 180-240, R: 250-305, A: 315-375,
-         C: 385-435, O: 445-505, R: 515-570, D: 580-640
+    <!-- Clip paths for rope weaving through text -->
+    <!-- Letter approximate x-positions at font-size 88, centered at x=450:
+         P: 187-242, A: 252-312, R: 322-377, A: 387-447,
+         C: 457-507, O: 517-577, R: 587-642, D: 652-712
     -->
     <clipPath id="behindLetters">
       <!-- Covers letter regions where rope goes behind -->
-      <rect x="105" y="0" width="75" height="200"/>   <!-- P -->
-      <rect x="245" y="0" width="65" height="200"/>   <!-- R -->
-      <rect x="380" y="0" width="60" height="200"/>   <!-- C -->
-      <rect x="510" y="0" width="65" height="200"/>   <!-- R2 -->
-      <rect x="640" y="0" width="70" height="200"/>   <!-- D -->
+      <rect x="182" y="0" width="65" height="200"/>   <!-- P -->
+      <rect x="317" y="0" width="65" height="200"/>   <!-- R1 -->
+      <rect x="452" y="0" width="60" height="200"/>   <!-- C -->
+      <rect x="582" y="0" width="60" height="200"/>   <!-- R2 -->
+      <rect x="652" y="0" width="65" height="200"/>   <!-- D -->
     </clipPath>
     <clipPath id="inFrontOfLetters">
-      <!-- Covers regions between letters where rope is in front -->
-      <rect x="0" y="0" width="105" height="200"/>    <!-- before P -->
-      <rect x="180" y="0" width="65" height="200"/>   <!-- A1 -->
-      <rect x="310" y="0" width="70" height="200"/>   <!-- A2 -->
-      <rect x="440" y="0" width="70" height="200"/>   <!-- O -->
-      <rect x="575" y="0" width="65" height="200"/>   <!-- between R2-D -->
-      <rect x="710" y="0" width="190" height="200"/>  <!-- after D -->
+      <!-- Covers regions between/over letters where rope is in front -->
+      <rect x="0" y="0" width="182" height="200"/>    <!-- before P -->
+      <rect x="247" y="0" width="70" height="200"/>   <!-- A1 -->
+      <rect x="382" y="0" width="70" height="200"/>   <!-- A2 -->
+      <rect x="512" y="0" width="70" height="200"/>   <!-- O -->
+      <rect x="642" y="0" width="10" height="200"/>   <!-- between R2-D -->
+      <rect x="717" y="0" width="183" height="200"/>  <!-- after D -->
     </clipPath>
   </defs>
 
