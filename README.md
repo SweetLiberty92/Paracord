@@ -3,6 +3,7 @@
 </p>
 
 A decentralized, self-hostable, open-source Discord alternative.
+> MacOS release coming very soon (probably later today). 
 
 ## The Why
 
