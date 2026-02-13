@@ -48,14 +48,21 @@ CLAUDE.md
 /dist/
 livekit*.zip
 livekit-extracted/
+livekit-extracted-win/
+target-rebuild/
+target-release-*/
 
 # Release archives
 paracord-server-*.zip
 paracord-server-*.tar.gz
 
-# Installer build outputs
+# Installer / release binaries
 installer/output/
 installer/*.exe
+*.exe
+*.msi
+*.AppImage
+*.deb
 
 # Dev dumps
 client/ui_dump.html

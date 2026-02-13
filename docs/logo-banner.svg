@@ -54,29 +54,31 @@
     -->
 
     <!-- Clip path boundaries placed at gap centers between letters.
-         Approximate letter positions at font-size 88, weight 800,
-         letter-spacing 10, text-anchor middle at x=450:
-           P: 182-234   gap center 239
-           A: 244-306   gap center 311
-           R: 316-372   gap center 377
-           A: 382-444   gap center 449
-           C: 454-510   gap center 515
-           O: 520-582   gap center 587
-           R: 592-648   gap center 653
+         Adjusted from rendered glyph positions (Segoe UI weight 800,
+         font-size 88, letter-spacing 10, text-anchor middle at x=450).
+         Right half (C–D) verified correct; left half (P–R1) shifted
+         ~12-15px left to match actual glyph edges.
+           P: ~165-226   gap center 231
+           A: ~236-295   gap center 300
+           R: ~305-364   gap center 369
+           A: ~374-444   gap center 449
+           C: 454-510    gap center 515
+           O: 520-582    gap center 587
+           R: 592-648    gap center 653
            D: 658-718
     -->
     <clipPath id="behindLetters">
       <!-- Odd letters: P, R1, C, R2 — rope passes behind these -->
-      <rect x="182" y="0" width="57"  height="200"/>  <!-- P:  182-239 -->
-      <rect x="311" y="0" width="66"  height="200"/>  <!-- R1: 311-377 -->
+      <rect x="165" y="0" width="66"  height="200"/>  <!-- P:  165-231 -->
+      <rect x="300" y="0" width="69"  height="200"/>  <!-- R1: 300-369 -->
       <rect x="449" y="0" width="66"  height="200"/>  <!-- C:  449-515 -->
       <rect x="587" y="0" width="66"  height="200"/>  <!-- R2: 587-653 -->
     </clipPath>
     <clipPath id="inFrontOfLetters">
       <!-- Even letters + edges: A1, A2, O, D — rope passes in front -->
-      <rect x="0"   y="0" width="182" height="200"/>  <!-- before P -->
-      <rect x="239" y="0" width="72"  height="200"/>  <!-- A1: 239-311 -->
-      <rect x="377" y="0" width="72"  height="200"/>  <!-- A2: 377-449 -->
+      <rect x="0"   y="0" width="165" height="200"/>  <!-- before P -->
+      <rect x="231" y="0" width="69"  height="200"/>  <!-- A1: 231-300 -->
+      <rect x="369" y="0" width="80"  height="200"/>  <!-- A2: 369-449 -->
       <rect x="515" y="0" width="72"  height="200"/>  <!-- O:  515-587 -->
       <rect x="653" y="0" width="247" height="200"/>  <!-- D + after: 653-900 -->
     </clipPath>
