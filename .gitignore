@@ -43,18 +43,26 @@ desktop.ini
 # Claude
 CLAUDE.md
 
+# Docker build files
+Dockerfile.*
+.dockerignore
+
 # Build artifacts
 *.tsbuildinfo
 /dist/
 livekit*.zip
+livekit*.tar.gz
 livekit-extracted/
 livekit-extracted-win/
+livekit-extracted-linux/
+linux-deb-out/
 target-rebuild/
 target-release-*/
 
 # Release archives
 paracord-server-*.zip
 paracord-server-*.tar.gz
+paracord-server-linux
 
 # Installer / release binaries
 installer/output/
