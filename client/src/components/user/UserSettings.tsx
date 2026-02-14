@@ -11,18 +11,34 @@ import { hasAccount as hasLocalCryptoAccount } from '../../lib/account';
 import { isAdmin } from '../../types';
 import { adminApi } from '../../api/admin';
 import { cn } from '../../lib/utils';
+import {
+  getKnownActivityAppsFromStorage,
+  normalizeDetectedAppId,
+  readStringArray,
+  readableAppName,
+  saveKnownActivityAppsToStorage,
+} from '../../lib/activityPresence';
 
 interface UserSettingsProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'account' | 'appearance' | 'voice' | 'notifications' | 'keybinds' | 'about' | 'server';
+type SettingsSection =
+  | 'account'
+  | 'appearance'
+  | 'voice'
+  | 'notifications'
+  | 'activity'
+  | 'keybinds'
+  | 'about'
+  | 'server';
 
 const NAV_ITEMS: { id: SettingsSection; label: string; adminOnly?: boolean }[] = [
   { id: 'account', label: 'My Account' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'voice', label: 'Voice & Video' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'activity', label: 'Activity Privacy' },
   { id: 'keybinds', label: 'Keybinds' },
   { id: 'server', label: 'Server', adminOnly: true },
   { id: 'about', label: 'About' },
@@ -46,6 +62,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
   const [locale, setLocale] = useState('en-US');
   const [messageCompact, setMessageCompact] = useState(false);
   const [notifications, setNotifications] = useState<Record<string, unknown>>({});
+  const [knownActivityApps, setKnownActivityApps] = useState<string[]>([]);
   const [keybinds, setKeybinds] = useState<Record<string, unknown>>({});
   const [capturingKeybind, setCapturingKeybind] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -85,10 +102,29 @@ export function UserSettings({ onClose }: UserSettingsProps) {
   useEffect(() => {
     if (settings) {
       const notif = settings.notifications as Record<string, unknown> | undefined;
+      const knownFromSettings = readStringArray(notif?.['activityDetectionKnownApps']).map(
+        normalizeDetectedAppId
+      );
+      const knownFromStorage = getKnownActivityAppsFromStorage().map(normalizeDetectedAppId);
+      const known = Array.from(new Set([...knownFromSettings, ...knownFromStorage])).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      );
+      const disabledApps = readStringArray(notif?.['activityDetectionDisabledApps']).map(
+        normalizeDetectedAppId
+      );
+
       setTheme(settings.theme);
       setLocale(settings.locale || 'en-US');
       setMessageCompact(settings.message_display_compact || false);
-      setNotifications((settings.notifications as Record<string, unknown>) || {});
+      setKnownActivityApps(known);
+      setNotifications({
+        ...(settings.notifications as Record<string, unknown>),
+        activityDetectionEnabled: notif?.['activityDetectionEnabled'] !== false,
+        activityDetectionKnownApps: known,
+        activityDetectionDisabledApps: Array.from(new Set(disabledApps)).sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: 'base' })
+        ),
+      });
       setKeybinds((settings.keybinds as Record<string, unknown>) || {});
       if (typeof notif?.['audioInputDeviceId'] === 'string') {
         selectAudioInput(notif['audioInputDeviceId'] as string);
@@ -149,6 +185,45 @@ export function UserSettings({ onClose }: UserSettingsProps) {
     [keybinds]
   );
 
+  const activityDetectionEnabled = mergedNotifications['activityDetectionEnabled'] !== false;
+  const disabledActivityApps = useMemo(
+    () =>
+      new Set(
+        readStringArray(mergedNotifications['activityDetectionDisabledApps']).map(
+          normalizeDetectedAppId
+        )
+      ),
+    [mergedNotifications]
+  );
+  const visibleKnownActivityApps = useMemo(() => {
+    const knownFromNotifications = readStringArray(
+      mergedNotifications['activityDetectionKnownApps']
+    ).map(normalizeDetectedAppId);
+    return Array.from(new Set([...knownActivityApps, ...knownFromNotifications])).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+  }, [knownActivityApps, mergedNotifications]);
+
+  useEffect(() => {
+    if (activeSection !== 'activity') return;
+    const syncDetectedApps = () => {
+      const latest = getKnownActivityAppsFromStorage().map(normalizeDetectedAppId);
+      const merged = Array.from(new Set([...latest, ...visibleKnownActivityApps])).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      );
+      setKnownActivityApps((prev) => {
+        if (prev.length === merged.length && prev.every((value, index) => value === merged[index])) {
+          return prev;
+        }
+        return merged;
+      });
+    };
+
+    syncDetectedApps();
+    const timer = window.setInterval(syncDetectedApps, 2000);
+    return () => window.clearInterval(timer);
+  }, [activeSection, visibleKnownActivityApps]);
+
   const saveProfile = async () => {
     setSaving(true);
     setStatusText(null);
@@ -190,6 +265,40 @@ export function UserSettings({ onClose }: UserSettingsProps) {
     }
   };
 
+  const setActivityDetectionEnabled = (enabled: boolean) => {
+    setNotifications((prev) => ({
+      ...prev,
+      activityDetectionEnabled: enabled,
+      activityDetectionKnownApps: visibleKnownActivityApps,
+    }));
+  };
+
+  const toggleActivityApp = (appId: string) => {
+    const normalized = normalizeDetectedAppId(appId);
+    setNotifications((prev) => {
+      const disabled = new Set(
+        readStringArray(prev['activityDetectionDisabledApps']).map(normalizeDetectedAppId)
+      );
+      if (disabled.has(normalized)) {
+        disabled.delete(normalized);
+      } else {
+        disabled.add(normalized);
+      }
+      return {
+        ...prev,
+        activityDetectionKnownApps: visibleKnownActivityApps,
+        activityDetectionDisabledApps: Array.from(disabled).sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: 'base' })
+        ),
+      };
+    });
+  };
+
+  const saveActivitySettings = async () => {
+    saveKnownActivityAppsToStorage(visibleKnownActivityApps);
+    await saveSettings();
+  };
+
   const handleCryptoSecurityToggle = async (enabled: boolean) => {
     if (!localCryptoAccountReady) return;
     setSaving(true);
@@ -223,8 +332,8 @@ export function UserSettings({ onClose }: UserSettingsProps) {
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <div className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full bg-accent-primary/20 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-accent-success/10 blur-[140px]" />
+      <div className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full blur-[120px]" style={{ backgroundColor: 'var(--ambient-glow-primary)' }} />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full blur-[140px]" style={{ backgroundColor: 'var(--ambient-glow-success)' }} />
 
       {isMobile ? (
         <div className="relative z-10 border-b border-border-subtle/70 bg-bg-secondary/70 px-3 pb-2.5 pt-[calc(var(--safe-top)+0.75rem)]">
@@ -297,23 +406,26 @@ export function UserSettings({ onClose }: UserSettingsProps) {
           </div>
         )}
         {statusText && (
-          <div className="mb-5 rounded-xl border border-border-subtle bg-bg-mod-subtle px-4 py-3 text-sm font-medium" style={{ color: statusText.includes('Failed') ? 'var(--accent-danger)' : 'var(--accent-success)' }}>
+          <div
+            className="card-surface mb-8 inline-flex max-w-full items-center rounded-xl border border-border-subtle bg-bg-mod-subtle px-4 py-3 text-sm font-medium"
+            style={{ color: statusText.includes('Failed') ? 'var(--accent-danger)' : 'var(--accent-success)' }}
+          >
             {statusText}
           </div>
         )}
 
         {activeSection === 'account' && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)] !p-0 overflow-hidden">
-            <div className="p-5 pb-0">
-              <h2 className="settings-section-title mb-4">My Account</h2>
+            <div className="p-8 pb-0">
+              <h2 className="settings-section-title mb-8">My Account</h2>
             </div>
             <div>
               <div
                 className="h-28"
                 style={{ background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%)' }}
               />
-              <div className="px-6 pb-6">
-                <div className="-mt-9 mb-5 flex items-end">
+              <div className="px-8 pb-8">
+                <div className="-mt-9 mb-12 flex items-end">
                   <div
                     className="flex h-20 w-20 items-center justify-center rounded-full border-4 text-2xl font-bold text-white"
                     style={{ backgroundColor: 'var(--accent-primary)', borderColor: 'var(--bg-secondary)' }}
@@ -324,102 +436,106 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                     {user?.username || 'User'}
                   </span>
                 </div>
-                <div
-                  className="space-y-6 rounded-2xl border border-border-subtle bg-bg-tertiary/80 p-6"
-                >
-                  <div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Username</div>
+                <div className="card-stack-roomy">
+                  <div
+                    className="card-surface card-stack-relaxed rounded-2xl border border-border-subtle bg-bg-tertiary/80 p-8"
+                  >
+                    <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/55 px-6 py-5">
+                      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Username</div>
                       <div className="text-sm font-medium text-text-primary">{user?.username || 'Unknown'}</div>
                     </div>
-                  </div>
-                  <div>
-                    <div>
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">Display Name</div>
+                    <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/55 px-6 py-5">
+                      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Display Name</div>
                       <input className="input-field" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
                     </div>
-                  </div>
-                  <div>
-                    <div>
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">Bio</div>
+                    <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/55 px-6 py-5">
+                      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Bio</div>
                       <textarea className="input-field resize-none" rows={3} value={bio} onChange={(e) => setBio(e.target.value)} />
                     </div>
-                  </div>
-                  <div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Email</div>
+                    <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/55 px-6 py-5">
+                      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Email</div>
                       <div className="text-sm font-medium text-text-primary">
                         {user?.email ? user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : '***@***'}
                       </div>
                     </div>
-                  </div>
-                  <button className="btn-primary" onClick={() => void saveProfile()} disabled={saving}>
-                    {saving ? 'Saving...' : 'Save Profile'}
-                  </button>
-                </div>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <div className="min-h-[5.25rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-3.5 py-3.5">
-                    <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Theme</div>
-                    <div className="mt-1 text-base font-semibold text-text-primary">{theme.toUpperCase()}</div>
-                  </div>
-                  <div className="min-h-[5.25rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-3.5 py-3.5">
-                    <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Locale</div>
-                    <div className="mt-1 text-base font-semibold text-text-primary">{locale}</div>
-                  </div>
-                  <div className="min-h-[5.25rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-3.5 py-3.5">
-                    <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Message Density</div>
-                    <div className="mt-1 text-base font-semibold text-text-primary">
-                      {messageCompact ? 'Compact' : 'Comfortable'}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6 rounded-2xl border border-border-subtle bg-bg-tertiary/80 p-6">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                        Device Crypto Security (Optional)
-                      </div>
-                      <div className="mt-1 text-sm text-text-muted">
-                        When enabled, this account can use local key unlock and challenge-response sign-in.
-                      </div>
-                    </div>
-                    <ToggleSwitch
-                      on={cryptoAuthEnabled}
-                      onToggle={() => handleCryptoSecurityToggle(!cryptoAuthEnabled)}
-                      disabled={!localCryptoAccountReady || saving}
-                    />
-                  </div>
-
-                  {!localCryptoAccountReady && (
-                    <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
-                      <div className="text-sm text-text-muted">
-                        You have not set up a local crypto identity for this account yet.
-                      </div>
-                      <button
-                        className="btn-primary mt-3"
-                        onClick={() => {
-                          onClose();
-                          navigate('/setup?migrate=1');
-                        }}
-                      >
-                        Set Up Local Identity
+                    <div className="settings-action-row">
+                      <button className="btn-primary" onClick={() => void saveProfile()} disabled={saving}>
+                        {saving ? 'Saving...' : 'Save Profile'}
                       </button>
                     </div>
-                  )}
+                  </div>
 
-                  {localCryptoAccountReady && (
-                    <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5 text-sm">
-                      {cryptoAuthEnabled ? (
-                        <span className="text-text-primary">
-                          Security mode is enabled. {accountUnlocked ? 'Identity is currently unlocked.' : 'Identity is currently locked.'}
-                        </span>
-                      ) : (
-                        <span className="text-text-muted">
-                          Security mode is disabled. This account signs in with username/password only.
-                        </span>
+                  <div className="card-surface rounded-2xl border border-border-subtle bg-bg-tertiary/80 p-4 sm:p-5">
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      <div className="card-surface min-h-[5.25rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/80 px-6 py-5">
+                        <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Theme</div>
+                        <div className="mt-1 text-base font-semibold text-text-primary">{theme.toUpperCase()}</div>
+                      </div>
+                      <div className="card-surface min-h-[5.25rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/80 px-6 py-5">
+                        <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Locale</div>
+                        <div className="mt-1 text-base font-semibold text-text-primary">{locale}</div>
+                      </div>
+                      <div className="card-surface min-h-[5.25rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/80 px-6 py-5">
+                        <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Message Density</div>
+                        <div className="mt-1 text-base font-semibold text-text-primary">
+                          {messageCompact ? 'Compact' : 'Comfortable'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card-surface rounded-2xl border border-border-subtle bg-bg-tertiary/80 p-8">
+                    <div className="card-stack-relaxed">
+                      <div className="card-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                            Device Crypto Security (Optional)
+                          </div>
+                          <div className="mt-1 text-sm text-text-muted">
+                            When enabled, this account can use local key unlock and challenge-response sign-in.
+                          </div>
+                        </div>
+                        <ToggleSwitch
+                          on={cryptoAuthEnabled}
+                          onToggle={() => handleCryptoSecurityToggle(!cryptoAuthEnabled)}
+                          disabled={!localCryptoAccountReady || saving}
+                        />
+                      </div>
+
+                      {!localCryptoAccountReady && (
+                        <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-6">
+                          <div className="text-sm text-text-muted">
+                            You have not set up a local crypto identity for this account yet.
+                          </div>
+                          <div className="settings-action-row">
+                            <button
+                              className="btn-primary"
+                              onClick={() => {
+                                onClose();
+                                navigate('/setup?migrate=1');
+                              }}
+                            >
+                              Set Up Local Identity
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {localCryptoAccountReady && (
+                        <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-6 text-sm">
+                          {cryptoAuthEnabled ? (
+                            <span className="text-text-primary">
+                              Security mode is enabled. {accountUnlocked ? 'Identity is currently unlocked.' : 'Identity is currently locked.'}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">
+                              Security mode is disabled. This account signs in with username/password only.
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -428,10 +544,10 @@ export function UserSettings({ onClose }: UserSettingsProps) {
 
         {activeSection === 'appearance' && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Appearance</h2>
-            <div className="mb-6">
+            <h2 className="settings-section-title mb-8">Appearance</h2>
+            <div className="mb-8">
               <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">Theme</div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-5 sm:grid-cols-3">
                 {[
                   { id: 'dark' as const, label: 'Dark', icon: <Moon size={20} /> },
                   { id: 'light' as const, label: 'Light', icon: <Sun size={20} /> },
@@ -440,7 +556,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                   <button
                     key={t.id}
                     onClick={() => handleThemeChange(t.id)}
-                    className="flex flex-col items-center gap-2.5 rounded-xl border px-6 py-5 transition-colors"
+                    className="card-surface flex flex-col items-center gap-2.5 rounded-xl border px-6 py-5 transition-colors"
                     style={{
                       backgroundColor: theme === t.id ? 'var(--accent-primary)' : 'var(--bg-secondary)',
                       color: theme === t.id ? '#fff' : 'var(--text-secondary)',
@@ -453,32 +569,34 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                 ))}
               </div>
             </div>
-            <div className="space-y-5">
+            <div className="card-stack-relaxed">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Locale</span>
-                <input className="input-field mt-2" value={locale} onChange={(e) => setLocale(e.target.value)} />
+                <input className="input-field mt-3" value={locale} onChange={(e) => setLocale(e.target.value)} />
               </label>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+              <div className="card-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-text-primary">Compact Message Display</div>
                 </div>
                 <ToggleSwitch on={messageCompact} onToggle={() => setMessageCompact(!messageCompact)} />
               </div>
             </div>
-            <button className="btn-primary mt-5" onClick={() => void saveSettings()} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Appearance'}
-            </button>
+            <div className="settings-action-row">
+              <button className="btn-primary" onClick={() => void saveSettings()} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Appearance'}
+              </button>
+            </div>
           </div>
         )}
 
         {activeSection === 'voice' && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Voice & Video</h2>
-            <div className="space-y-4">
-              <label className="block">
+            <h2 className="settings-section-title mb-8">Voice & Video</h2>
+            <div className="card-stack">
+              <label className="card-surface block rounded-xl border border-border-subtle bg-bg-mod-subtle/55 px-6 py-5">
                 <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Input Device</span>
                 <select
-                  className="select-field mt-2"
+                  className="select-field mt-3"
                   value={selectedAudioInput || ''}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -494,10 +612,10 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                   ))}
                 </select>
               </label>
-              <label className="block">
+              <label className="card-surface block rounded-xl border border-border-subtle bg-bg-mod-subtle/55 px-6 py-5">
                 <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Output Device</span>
                 <select
-                  className="select-field mt-2"
+                  className="select-field mt-3"
                   value={selectedAudioOutput || ''}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -513,7 +631,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                   ))}
                 </select>
               </label>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+              <div className="card-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-text-primary">Noise Suppression</div>
                   <div className="text-xs text-text-muted">Reduces background noise</div>
@@ -523,7 +641,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                   onToggle={() => setNotifications((prev) => ({ ...prev, noiseSuppression: !Boolean(prev['noiseSuppression'] ?? true) }))}
                 />
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+              <div className="card-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-text-primary">Echo Cancellation</div>
                   <div className="text-xs text-text-muted">Reduces echo from speakers</div>
@@ -533,7 +651,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                   onToggle={() => setNotifications((prev) => ({ ...prev, echoCancellation: !Boolean(prev['echoCancellation'] ?? true) }))}
                 />
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+              <div className="card-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-text-primary">Automatic Gain Control</div>
                   <div className="text-xs text-text-muted">Normalizes mic volume (can add noise on some setups)</div>
@@ -544,24 +662,26 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                 />
               </div>
             </div>
-            <button className="btn-primary mt-5" onClick={() => {
-              void saveSettings().then(() => {
-                // Re-acquire the microphone with updated noise suppression /
-                // echo cancellation / auto gain constraints so changes take effect
-                // immediately without requiring a mute/unmute cycle.
-                void useVoiceStore.getState().reapplyAudioConstraints();
-              });
-            }} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Voice Settings'}
-            </button>
+            <div className="settings-action-row">
+              <button className="btn-primary" onClick={() => {
+                void saveSettings().then(() => {
+                  // Re-acquire the microphone with updated noise suppression /
+                  // echo cancellation / auto gain constraints so changes take effect
+                  // immediately without requiring a mute/unmute cycle.
+                  void useVoiceStore.getState().reapplyAudioConstraints();
+                });
+              }} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Voice Settings'}
+              </button>
+            </div>
           </div>
         )}
 
         {activeSection === 'notifications' && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Notifications</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+            <h2 className="settings-section-title mb-8">Notifications</h2>
+            <div className="card-stack">
+              <div className="card-surface flex items-center justify-between rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-text-primary">Desktop Notifications</div>
                   <div className="text-xs text-text-muted">Show desktop notifications for new messages</div>
@@ -571,7 +691,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                   onToggle={() => setNotifications((prev) => ({ ...prev, desktop: !Boolean(prev.desktop) }))}
                 />
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+              <div className="card-surface flex items-center justify-between rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-text-primary">Message Sound</div>
                   <div className="text-xs text-text-muted">Play a sound for incoming messages</div>
@@ -582,16 +702,75 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                 />
               </div>
             </div>
-            <button className="btn-primary mt-5" onClick={() => void saveSettings()} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Notifications'}
-            </button>
+            <div className="settings-action-row">
+              <button className="btn-primary" onClick={() => void saveSettings()} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Notifications'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'activity' && (
+          <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
+            <h2 className="settings-section-title mb-8">Activity Privacy</h2>
+            <div className="card-stack">
+              <div className="card-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-5">
+                <div>
+                  <div className="text-sm font-medium text-text-primary">Display current activity</div>
+                  <div className="text-xs text-text-muted">
+                    Show the game/app you are currently using in presence.
+                  </div>
+                </div>
+                <ToggleSwitch
+                  on={Boolean(activityDetectionEnabled)}
+                  onToggle={() => setActivityDetectionEnabled(!Boolean(activityDetectionEnabled))}
+                />
+              </div>
+
+              <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-6">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                  Detected Apps
+                </div>
+                <div className="mb-3 text-xs text-text-muted">
+                  Disable any detected app to prevent Paracord from reporting it.
+                </div>
+                {visibleKnownActivityApps.length === 0 ? (
+                  <div className="rounded-lg border border-border-subtle bg-bg-tertiary/70 px-3 py-2.5 text-sm text-text-muted">
+                    No apps detected yet. Launch a game/app while Paracord is open.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {visibleKnownActivityApps.map((appId) => {
+                      const enabled = !disabledActivityApps.has(appId);
+                      return (
+                        <div
+                          key={appId}
+                          className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-tertiary/70 px-3 py-2.5"
+                        >
+                          <div>
+                            <div className="text-sm font-medium text-text-primary">{readableAppName(appId)}</div>
+                            <div className="text-xs text-text-muted">{appId}</div>
+                          </div>
+                          <ToggleSwitch on={enabled} onToggle={() => toggleActivityApp(appId)} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="settings-action-row">
+              <button className="btn-primary" onClick={() => void saveActivitySettings()} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Activity Privacy'}
+              </button>
+            </div>
           </div>
         )}
 
         {activeSection === 'keybinds' && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Keybinds</h2>
-            <div className="space-y-3">
+            <h2 className="settings-section-title mb-8">Keybinds</h2>
+            <div className="card-stack">
               {[
                 { key: 'toggleMute' as const, action: 'Toggle Mute' },
                 { key: 'toggleDeafen' as const, action: 'Toggle Deafen' },
@@ -599,7 +778,7 @@ export function UserSettings({ onClose }: UserSettingsProps) {
               ].map(kb => (
                 <div
                   key={kb.key}
-                  className="flex flex-col items-stretch gap-2 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+                  className="card-surface flex flex-col items-stretch gap-2 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-6 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <span className="text-sm font-medium text-text-primary">{kb.action}</span>
                   <input
@@ -627,17 +806,19 @@ export function UserSettings({ onClose }: UserSettingsProps) {
                 </div>
               ))}
             </div>
-            <button className="btn-primary mt-5" onClick={() => void saveSettings()} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Keybinds'}
-            </button>
+            <div className="settings-action-row">
+              <button className="btn-primary" onClick={() => void saveSettings()} disabled={saving}>
+                {saving ? 'Saving...' : 'Save Keybinds'}
+              </button>
+            </div>
           </div>
         )}
 
         {activeSection === 'server' && userIsAdmin && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Server</h2>
-            <div className="space-y-4">
-              <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3">
+            <h2 className="settings-section-title mb-8">Server</h2>
+            <div className="card-stack">
+              <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-6">
                 <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Update & Restart</div>
                 <div className="mt-2 text-sm text-text-muted">
                   Pull the latest code from git, rebuild the client and server, then restart. All connected users will be temporarily disconnected.
@@ -690,9 +871,9 @@ export function UserSettings({ onClose }: UserSettingsProps) {
 
         {activeSection === 'about' && (
           <div className="settings-surface-card w-full min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">About</h2>
-            <div className="space-y-3">
-              <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3">
+            <h2 className="settings-section-title mb-8">About</h2>
+            <div className="card-stack">
+              <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-6 py-6">
                 <div className="text-sm font-semibold text-text-primary">{APP_NAME}</div>
                 <div className="mt-1 text-xs text-text-muted">Version 0.2.2</div>
               </div>

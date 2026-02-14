@@ -182,18 +182,18 @@ pub async fn accept_invite(
         paracord_db::members::add_server_member(&state.db, auth.user_id)
             .await
             .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    }
 
-        // Assign @everyone role (role id = space id)
-        if let Err(e) = paracord_db::roles::add_member_role(
-            &state.db,
-            auth.user_id,
-            space_id,
-            space_id,
-        )
-        .await
-        {
-            tracing::warn!("Failed to assign @everyone role: {e}");
-        }
+    // Ensure default Member role assignment for this space.
+    if let Err(e) = paracord_db::roles::add_member_role(
+        &state.db,
+        auth.user_id,
+        space_id,
+        space_id,
+    )
+    .await
+    {
+        tracing::warn!("Failed to assign Member role: {e}");
     }
 
     let guild = paracord_db::guilds::get_guild(&state.db, space_id)

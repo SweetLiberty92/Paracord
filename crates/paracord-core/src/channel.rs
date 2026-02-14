@@ -12,6 +12,7 @@ pub async fn create_channel(
     name: &str,
     channel_type: i16,
     parent_id: Option<i64>,
+    required_role_ids: Option<&str>,
 ) -> Result<paracord_db::channels::ChannelRow, CoreError> {
     let guild = paracord_db::guilds::get_guild(pool, guild_id)
         .await?
@@ -26,7 +27,14 @@ pub async fn create_channel(
     let position = channels.len() as i32;
 
     let channel = paracord_db::channels::create_channel(
-        pool, channel_id, guild_id, name, channel_type, position, parent_id,
+        pool,
+        channel_id,
+        guild_id,
+        name,
+        channel_type,
+        position,
+        parent_id,
+        required_role_ids,
     )
     .await?;
 
@@ -66,6 +74,7 @@ pub async fn update_channel(
     user_id: i64,
     name: Option<&str>,
     topic: Option<&str>,
+    required_role_ids: Option<&str>,
 ) -> Result<paracord_db::channels::ChannelRow, CoreError> {
     let channel = paracord_db::channels::get_channel(pool, channel_id)
         .await?
@@ -83,6 +92,8 @@ pub async fn update_channel(
     let perms = permissions::compute_permissions_from_roles(&roles, guild.owner_id, user_id);
     permissions::require_permission(perms, Permissions::MANAGE_CHANNELS)?;
 
-    let updated = paracord_db::channels::update_channel(pool, channel_id, name, topic).await?;
+    let updated =
+        paracord_db::channels::update_channel(pool, channel_id, name, topic, required_role_ids)
+            .await?;
     Ok(updated)
 }

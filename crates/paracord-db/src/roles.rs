@@ -143,10 +143,20 @@ pub async fn get_member_roles(
     space_id: i64,
 ) -> Result<Vec<RoleRow>, DbError> {
     let rows = sqlx::query_as::<_, RoleRow>(
-        "SELECT r.id, r.space_id, r.name, r.color, r.hoist, r.position, r.permissions, r.managed, r.mentionable, r.server_wide, r.created_at
+        "SELECT DISTINCT
+            r.id, r.space_id, r.name, r.color, r.hoist, r.position, r.permissions, r.managed, r.mentionable, r.server_wide, r.created_at
          FROM roles r
-         INNER JOIN member_roles mr ON mr.role_id = r.id
-         WHERE mr.user_id = ?1 AND r.space_id = ?2
+         LEFT JOIN member_roles mr
+            ON mr.role_id = r.id
+            AND mr.user_id = ?1
+         WHERE r.space_id = ?2
+           AND (
+                mr.user_id IS NOT NULL
+                OR (
+                    r.id = ?2
+                    AND EXISTS (SELECT 1 FROM members m WHERE m.user_id = ?1)
+                )
+           )
          ORDER BY r.position"
     )
     .bind(user_id)

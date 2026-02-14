@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageSquare, UserPlus, Ban } from 'lucide-react';
 import type { User } from '../../types/index';
 import { dmApi } from '../../api/dms';
 import { relationshipApi } from '../../api/relationships';
 import { useChannelStore } from '../../stores/channelStore';
+import { usePresenceStore } from '../../stores/presenceStore';
+import {
+  formatActivityElapsed,
+  formatActivityLabel,
+  getPrimaryActivity,
+} from '../../lib/activityPresence';
 
 interface UserProfilePopupProps {
   user: User;
@@ -18,6 +24,13 @@ function intToHex(color: number): string {
   return '#' + color.toString(16).padStart(6, '0');
 }
 
+const STATUS_COLORS: Record<'online' | 'idle' | 'dnd' | 'offline', string> = {
+  online: 'var(--status-online)',
+  idle: 'var(--status-idle)',
+  dnd: 'var(--status-dnd)',
+  offline: 'var(--status-offline)',
+};
+
 export function UserProfilePopup({ user, position, onClose, roles = [] }: UserProfilePopupProps) {
   const navigate = useNavigate();
   // Try to position to the left of the click point; fall back to the right
@@ -30,6 +43,15 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
   const top = Math.max(8, Math.min(position.y, window.innerHeight - estimatedHeight - 8));
   const [note, setNote] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const presence = usePresenceStore((state) => state.presences.get(user.id));
+  const status = (presence?.status as 'online' | 'idle' | 'dnd' | 'offline') || 'offline';
+  const activity = useMemo(() => getPrimaryActivity(presence), [presence]);
+  const activityLabel = useMemo(() => formatActivityLabel(activity), [activity]);
+  const activityElapsed = useMemo(
+    () => formatActivityElapsed(activity?.started_at, now),
+    [activity?.started_at, now]
+  );
 
   useEffect(() => {
     try {
@@ -47,6 +69,13 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
       /* ignore */
     }
   }, [user.id, note]);
+
+  useEffect(() => {
+    if (!activity?.started_at) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activity?.started_at]);
 
   const handleMessage = async () => {
     try {
@@ -104,7 +133,7 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
         />
 
         {/* Avatar + name */}
-        <div className="px-5 pb-4">
+        <div className="px-7 pb-6">
           <div className="relative -mt-8 mb-3">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-full border-4 text-xl font-bold text-white"
@@ -118,7 +147,7 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
             <div
               className="absolute bottom-0 right-0 w-5 h-5 rounded-full"
               style={{
-                backgroundColor: 'var(--status-online)',
+                backgroundColor: STATUS_COLORS[status],
                 borderColor: 'var(--bg-floating)',
                 borderWidth: '3px',
                 borderStyle: 'solid',
@@ -132,12 +161,29 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
           <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {user.username}
           </div>
+          {activityLabel && (
+            <div className="mt-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+              {activityElapsed ? `${activityLabel} for ${activityElapsed}` : activityLabel}
+            </div>
+          )}
         </div>
 
-        <div className="mx-5 h-px" style={{ backgroundColor: 'var(--border-subtle)' }} />
+        <div className="mx-7 h-px" style={{ backgroundColor: 'var(--border-subtle)' }} />
 
-        <div className="px-5 py-4">
-          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
+        {activityLabel && (
+          <div className="px-7 pt-6 pb-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
+              Activity
+            </div>
+            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              {activityLabel}
+              {activityElapsed ? ` (${activityElapsed})` : ''}
+            </div>
+          </div>
+        )}
+
+        <div className="px-7 py-6">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
             About Me
           </div>
           <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -146,8 +192,8 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
         </div>
 
         {roles.length > 0 && (
-          <div className="px-5 pb-4">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
+          <div className="px-7 pb-6">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
               Roles
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -172,8 +218,8 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
           </div>
         )}
 
-        <div className="px-5 pb-4">
-          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
+        <div className="px-7 pb-6">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-primary)' }}>
             Note
           </div>
           <input
@@ -185,7 +231,7 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
           />
         </div>
 
-        <div className="flex gap-2.5 px-5 pb-5">
+        <div className="flex gap-4 px-7 pb-7">
           <button className="btn-primary flex-1 items-center justify-center gap-1.5" onClick={() => void handleMessage()}>
             <MessageSquare size={14} />
             Message
@@ -198,7 +244,7 @@ export function UserProfilePopup({ user, position, onClose, roles = [] }: UserPr
           </button>
         </div>
         {actionError && (
-          <div className="px-5 pb-5 text-xs font-medium" style={{ color: 'var(--accent-danger)' }}>
+          <div className="px-7 pb-7 text-xs font-medium" style={{ color: 'var(--accent-danger)' }}>
             {actionError}
           </div>
         )}

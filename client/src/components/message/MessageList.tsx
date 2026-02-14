@@ -120,7 +120,9 @@ export function MessageList({ channelId, onReply }: MessageListProps) {
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage?.id || lastReadStateMessageIdRef.current === lastMessage.id) return;
     lastReadStateMessageIdRef.current = lastMessage.id;
-    channelApi.updateReadState(channelId, lastMessage.id).catch(() => {
+    channelApi.updateReadState(channelId, lastMessage.id).then(() => {
+      window.dispatchEvent(new CustomEvent('paracord:read-state-updated'));
+    }).catch(() => {
       /* ignore */
     });
   };

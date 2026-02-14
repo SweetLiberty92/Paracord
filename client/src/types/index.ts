@@ -68,6 +68,7 @@ export interface Channel {
   rate_limit_per_user?: number;
   parent_id?: string | null;
   last_message_id?: string;
+  required_role_ids?: string[];
   created_at: string;
   recipient?: {
     id: string;
@@ -198,8 +199,11 @@ export interface Presence {
 export interface Activity {
   name: string;
   type: number;
+  activity_type?: number;
   details?: string;
   state?: string;
+  started_at?: string;
+  application_id?: string;
 }
 
 export interface Ban {
@@ -333,6 +337,7 @@ export interface CreateChannelRequest {
   type?: ChannelType;
   channel_type?: number;
   parent_id?: string | null;
+  required_role_ids?: string[];
   topic?: string;
   position?: number;
   bitrate?: number;

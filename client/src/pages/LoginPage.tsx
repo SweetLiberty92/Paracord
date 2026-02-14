@@ -76,55 +76,57 @@ export function LoginPage() {
 
   return (
     <div className="auth-shell">
-      <form onSubmit={handleSubmit} className="auth-card mx-auto w-full max-w-md">
-        <div className="mb-8 text-center">
+      <form onSubmit={handleSubmit} className="auth-card mx-auto w-full max-w-md space-y-8 p-10">
+        <div className="text-center">
           <h1 className="text-3xl font-bold leading-tight text-text-primary">Welcome back</h1>
-          <p className="mt-2 text-sm text-text-muted">Sign in to continue to your servers.</p>
+          <p className="mt-3 text-sm text-text-muted">Sign in to continue to your servers.</p>
         </div>
 
         {error && (
-          <div className="mb-5 rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-4 py-3 text-sm font-medium text-accent-danger">
+          <div className="rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-5 py-4 text-sm font-medium text-accent-danger">
             {error}
           </div>
         )}
 
-        <label className="mb-5 block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            Email <span className="text-accent-danger">*</span>
-          </span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="input-field mt-2"
-            placeholder="you@example.com"
-          />
-        </label>
+        <div className="space-y-7">
+          <label className="block">
+            <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Email <span className="text-accent-danger">*</span>
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="input-field"
+              placeholder="you@example.com"
+            />
+          </label>
 
-        <label className="mb-2 block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-            Password <span className="text-accent-danger">*</span>
-          </span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="input-field mt-2"
-            placeholder="Enter your password"
-          />
-        </label>
+          <label className="block">
+            <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Password <span className="text-accent-danger">*</span>
+            </span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="input-field"
+              placeholder="Enter your password"
+            />
+          </label>
+        </div>
 
-        <p className="mb-6 mt-2 text-xs leading-5 text-text-muted">
+        <p className="text-xs leading-5 text-text-muted">
           Forgot your password? Contact your server administrator to reset your credentials.
         </p>
 
-        <button type="submit" disabled={loading} className="btn-primary w-full">
+        <button type="submit" disabled={loading} className="btn-primary mt-10 w-full">
           {loading ? 'Logging in...' : 'Log In'}
         </button>
 
-        <p className="mt-5 text-sm text-text-muted">
+        <p className="mt-8 text-sm text-text-muted">
           Need an account?{' '}
           <Link to="/register" className="font-semibold text-text-link hover:underline">
             Register
@@ -132,7 +134,7 @@ export function LoginPage() {
         </p>
 
         {serverUrl && (
-          <p className="mt-4 text-xs text-text-muted">
+          <p className="mt-8 text-xs text-text-muted">
             Connected to{' '}
             <span className="font-medium text-text-secondary">{serverUrl}</span>
             {' \u00b7 '}

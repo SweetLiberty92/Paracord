@@ -6,6 +6,7 @@ import { UserProfilePopup } from '../user/UserProfile';
 import { useMemberStore } from '../../stores/memberStore';
 import { usePresenceStore } from '../../stores/presenceStore';
 import { useGuildStore } from '../../stores/guildStore';
+import { formatActivityLabel, getPrimaryActivity } from '../../lib/activityPresence';
 
 interface MemberWithUser {
   user_id: string;
@@ -14,6 +15,7 @@ interface MemberWithUser {
   nick: string | null;
   roles: string[];
   status?: 'online' | 'idle' | 'dnd' | 'offline';
+  activityText?: string | null;
 }
 
 interface MemberListProps {
@@ -45,6 +47,7 @@ export function MemberList({ members: propMembers, roles = [] }: MemberListProps
     if (propMembers) return propMembers;
     return (storeMembers || []).map(m => {
       const presence = presences.get(m.user.id);
+      const activity = getPrimaryActivity(presence);
       return {
         user_id: m.user.id,
         username: m.user.username,
@@ -52,6 +55,7 @@ export function MemberList({ members: propMembers, roles = [] }: MemberListProps
         nick: m.nick || null,
         roles: m.roles ?? [],
         status: (presence?.status as MemberWithUser['status']) ?? 'offline',
+        activityText: formatActivityLabel(activity),
       };
     });
   }, [propMembers, storeMembers, presences]);
@@ -111,14 +115,19 @@ export function MemberList({ members: propMembers, roles = [] }: MemberListProps
           }}
         />
       </div>
-      <span
-        className="truncate text-sm font-semibold text-text-secondary transition-colors group-hover:text-text-primary"
-        style={{
-          opacity: member.status === 'offline' ? 0.4 : 1,
-        }}
-      >
-        {member.nick || member.username}
-      </span>
+      <div className="min-w-0">
+        <div
+          className="truncate text-sm font-semibold text-text-secondary transition-colors group-hover:text-text-primary"
+          style={{
+            opacity: member.status === 'offline' ? 0.4 : 1,
+          }}
+        >
+          {member.nick || member.username}
+        </div>
+        {member.activityText && member.status !== 'offline' && (
+          <div className="truncate text-xs text-text-muted">{member.activityText}</div>
+        )}
+      </div>
     </button>
   );
 
@@ -131,33 +140,37 @@ export function MemberList({ members: propMembers, roles = [] }: MemberListProps
       }}
     >
       <div className="px-3 pt-4.5">
-        <div className="mb-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-3.5 py-3">
+        <div className="mb-6 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-3.5 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Members</div>
           <div className="mt-0.5 text-base font-semibold text-text-primary">{members.length}</div>
         </div>
         {Array.from(roleGroups.entries()).map(([roleId, groupMembers]) => {
           const role = roles.find(r => r.id === roleId);
           return (
-            <div key={roleId} className="mb-2.5">
-              <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <div key={roleId} className="mt-6 mb-3">
+              <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
                 {role?.name || 'Members'} — {groupMembers.length}
               </div>
-              {groupMembers.map(renderMember)}
+              <div className="space-y-1.5">
+                {groupMembers.map(renderMember)}
+              </div>
             </div>
           );
         })}
 
         {noRoleGroup.length > 0 && (
-          <div className="mb-2.5">
-            <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <div className="mt-6 mb-3">
+            <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
               Online — {noRoleGroup.length}
             </div>
-            {noRoleGroup.map(renderMember)}
+            <div className="space-y-1.5">
+              {noRoleGroup.map(renderMember)}
+            </div>
           </div>
         )}
 
         {offlineMems.length > 0 && (
-          <div className="mb-2">
+          <div className="mt-8 mb-3">
             <button
               className="category-header w-full rounded-lg px-3 py-2 hover:bg-bg-mod-subtle"
               onClick={() => setShowOffline(!showOffline)}
@@ -169,7 +182,11 @@ export function MemberList({ members: propMembers, roles = [] }: MemberListProps
               />
               Offline — {offlineMems.length}
             </button>
-            {showOffline && offlineMems.map(renderMember)}
+            {showOffline && (
+              <div className="space-y-1.5">
+                {offlineMems.map(renderMember)}
+              </div>
+            )}
           </div>
         )}
 

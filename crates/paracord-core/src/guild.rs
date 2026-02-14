@@ -31,21 +31,39 @@ pub async fn create_guild_full(
     // Add owner as member
     paracord_db::members::add_member(pool, owner_id, guild_id).await?;
 
-    // Create @everyone role with default permissions (role id = guild id)
+    // Create the default Member role (role id = guild id).
     let default_perms = Permissions::default().bits();
-    paracord_db::roles::create_role(pool, guild_id, guild_id, "everyone", default_perms).await?;
+    paracord_db::roles::create_role(pool, guild_id, guild_id, "Member", default_perms).await?;
 
-    // Assign @everyone role to owner
+    // Assign Member role to owner
     paracord_db::roles::add_member_role(pool, owner_id, guild_id, guild_id).await?;
 
     // Create #general text channel
     let general_id = paracord_util::snowflake::generate(1);
-    paracord_db::channels::create_channel(pool, general_id, guild_id, "general", 0, 0, None)
+    paracord_db::channels::create_channel(
+        pool,
+        general_id,
+        guild_id,
+        "general",
+        0,
+        0,
+        None,
+        None,
+    )
         .await?;
 
     // Create General voice channel
     let voice_id = paracord_util::snowflake::generate(1);
-    paracord_db::channels::create_channel(pool, voice_id, guild_id, "General", 2, 1, None)
+    paracord_db::channels::create_channel(
+        pool,
+        voice_id,
+        guild_id,
+        "General",
+        2,
+        1,
+        None,
+        None,
+    )
         .await?;
 
     Ok(guild)

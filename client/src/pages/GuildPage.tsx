@@ -293,7 +293,7 @@ export function GuildPage() {
                       <select
                         value={captureQuality}
                         onChange={(e) => setCaptureQuality(e.target.value)}
-                        className="h-10 w-full rounded-xl border border-border-subtle bg-bg-mod-subtle px-3.5 text-xs font-medium text-text-secondary outline-none transition-colors hover:bg-bg-mod-faint sm:w-auto sm:text-sm"
+                        className="h-10 w-full rounded-xl border border-border-subtle bg-bg-mod-subtle px-3.5 text-xs font-medium text-text-secondary outline-none transition-colors hover:bg-bg-mod-strong sm:w-auto sm:text-sm"
                         title="Capture quality"
                         disabled={streamStarting}
                       >
@@ -382,7 +382,7 @@ export function GuildPage() {
                       onClick={() => setVideoLayout(mode)}
                       className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium transition-colors ${
                         videoLayout === mode
-                          ? 'border-accent-primary/50 bg-bg-mod-faint text-text-primary'
+                          ? 'border-accent-primary/50 bg-bg-mod-strong text-text-primary'
                           : 'border-transparent text-text-muted hover:bg-bg-mod-subtle'
                       }`}
                     >
@@ -426,7 +426,7 @@ export function GuildPage() {
                   <VideoGrid layout="grid" />
                   <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-border-subtle">
                     <div className="relative flex h-full min-h-[240px] items-center justify-center overflow-hidden bg-bg-mod-subtle/30 sm:min-h-[300px]">
-                      <div className="pointer-events-none absolute -top-12 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-accent-primary/15 blur-3xl" />
+                      <div className="pointer-events-none absolute -top-12 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full blur-3xl" style={{ backgroundColor: 'var(--ambient-glow-primary)' }} />
                       <div className="relative mx-3 flex w-full max-w-md flex-col items-center rounded-2xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-5 text-center sm:mx-4 sm:px-7 sm:py-7">
                         <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-border-subtle bg-bg-primary/70 text-text-secondary">
                           <Monitor size={20} />

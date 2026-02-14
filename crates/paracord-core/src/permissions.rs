@@ -35,6 +35,10 @@ pub fn require_permission(perms: Permissions, required: Permissions) -> Result<(
     Ok(())
 }
 
+pub fn is_server_admin(perms: Permissions) -> bool {
+    perms.contains(Permissions::ADMINISTRATOR) || perms.contains(Permissions::MANAGE_GUILD)
+}
+
 /// Compute permissions from a set of Role rows
 pub fn compute_permissions_from_roles(
     roles: &[paracord_db::roles::RoleRow],
@@ -82,6 +86,17 @@ pub async fn compute_channel_permissions(
         return Ok(Permissions::all());
     }
 
+    let channel = paracord_db::channels::get_channel(pool, channel_id)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+
+    let role_ids: std::collections::HashSet<i64> = roles.iter().map(|r| r.id).collect();
+    let required_role_ids = paracord_db::channels::parse_required_role_ids(&channel.required_role_ids);
+    if !required_role_ids.is_empty() && !required_role_ids.iter().any(|id| role_ids.contains(id)) {
+        perms.remove(Permissions::VIEW_CHANNEL);
+        return Ok(perms);
+    }
+
     let overwrites = paracord_db::channel_overwrites::get_channel_overwrites(pool, channel_id).await?;
     if overwrites.is_empty() {
         return Ok(perms);
@@ -97,7 +112,6 @@ pub async fn compute_channel_permissions(
         perms |= allow;
     }
 
-    let role_ids: std::collections::HashSet<i64> = roles.iter().map(|r| r.id).collect();
     let mut role_deny = Permissions::empty();
     let mut role_allow = Permissions::empty();
     for overwrite in overwrites

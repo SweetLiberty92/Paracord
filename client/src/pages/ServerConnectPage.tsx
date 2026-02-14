@@ -143,41 +143,43 @@ export function ServerConnectPage() {
 
   return (
     <div className="auth-shell">
-      <div className="mx-auto w-full max-w-md space-y-6">
-        <form onSubmit={handleSubmit} className="auth-card">
-          <div className="mb-8 text-center">
+      <div className="mx-auto w-full max-w-md space-y-8">
+        <form onSubmit={handleSubmit} className="auth-card space-y-8 p-10">
+          <div className="text-center">
             <h1 className="text-3xl font-bold leading-tight text-text-primary">Add Server</h1>
-            <p className="mt-2 text-sm text-text-muted">
+            <p className="mt-3 text-sm text-text-muted">
               Enter a server URL, invite link, or portable link to connect.
             </p>
           </div>
 
           {error && (
-            <div className="mb-5 rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-4 py-3 text-sm font-medium text-accent-danger">
+            <div className="rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-5 py-4 text-sm font-medium text-accent-danger">
               {error}
             </div>
           )}
 
-          <label className="mb-2 block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Server URL or Invite Link <span className="text-accent-danger">*</span>
-            </span>
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              required
-              className="input-field mt-2"
-              placeholder="paracord://invite/... or 73.45.123.99:8080"
-              autoFocus
-            />
-          </label>
+          <div className="space-y-7">
+            <label className="block">
+              <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Server URL or Invite Link <span className="text-accent-danger">*</span>
+              </span>
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                required
+                className="input-field"
+                placeholder="paracord://invite/... or 73.45.123.99:8080"
+                autoFocus
+              />
+            </label>
+          </div>
 
-          <div className="mb-6 rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-3.5 py-3">
+          <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-4 py-3.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
               Accepted formats
             </span>
-            <div className="mt-1.5 text-sm leading-6 text-text-muted">
+            <div className="mt-2 text-sm leading-6 text-text-muted">
               paracord://invite/aBcDeFgH...<br />
               http://192.168.1.5:8090/invite/abc123<br />
               192.168.1.5:8090 or chat.example.com
@@ -185,12 +187,12 @@ export function ServerConnectPage() {
           </div>
 
           {status && (
-            <div className="mb-4 text-center text-sm text-text-muted">
+            <div className="text-center text-sm text-text-muted">
               {status}
             </div>
           )}
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
+          <button type="submit" disabled={loading} className="btn-primary mt-10 w-full">
             {loading ? 'Connecting...' : 'Add Server'}
           </button>
         </form>
@@ -201,11 +203,11 @@ export function ServerConnectPage() {
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-text-secondary">
               Your Servers
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {servers.map((server) => (
                 <div
                   key={server.id}
-                  className="flex items-center justify-between rounded-xl border border-border-subtle/60 bg-bg-mod-subtle/40 px-4 py-3"
+                  className="card-surface flex items-center justify-between rounded-xl border border-border-subtle/60 bg-bg-mod-subtle/40 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-text-primary">

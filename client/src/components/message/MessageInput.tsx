@@ -114,7 +114,7 @@ export function MessageInput({ channelId, guildId: _guildId, channelName, replyi
 
   return (
     <div
-      className="relative px-2.5 pb-[calc(var(--safe-bottom)+0.65rem)] pt-1 sm:px-5 sm:pb-5"
+      className="relative px-4 pb-[calc(var(--safe-bottom)+0.75rem)] pt-2 sm:px-5 sm:pb-5"
       onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
@@ -180,7 +180,7 @@ export function MessageInput({ channelId, guildId: _guildId, channelName, replyi
 
       {/* Input area */}
       <div
-        className={`glass-panel flex min-h-[56px] items-end gap-1.5 rounded-2xl border bg-bg-primary/75 px-3 py-2.5 shadow-[0_8px_24px_rgba(4,8,18,0.35)] sm:min-h-[60px] sm:gap-2.5 sm:px-4 sm:py-3 ${
+        className={`glass-panel flex min-h-[56px] items-end gap-2 rounded-2xl border bg-bg-primary/75 px-4 py-3 shadow-md sm:min-h-[60px] sm:gap-2.5 sm:px-5 sm:py-3.5 ${
           isDragOver ? 'border-2 border-dashed border-accent-primary/70' : 'border-border-subtle'
         }`}
         style={{

@@ -8,6 +8,7 @@ function normalizeChannel(channel: Channel): Channel {
     ...channel,
     type: (channel.type ?? channel.channel_type ?? 0) as Channel['type'],
     channel_type: channel.channel_type ?? channel.type ?? 0,
+    required_role_ids: channel.required_role_ids ?? [],
     created_at: channel.created_at ?? new Date().toISOString(),
   };
 }
@@ -34,6 +35,7 @@ interface ChannelState {
   addChannel: (channel: Channel) => void;
   updateChannel: (channel: Channel) => void;
   removeChannel: (guildId: string, channelId: string) => void;
+  updateLastMessageId: (channelId: string, messageId: string) => void;
 }
 
 export const useChannelStore = create<ChannelState>()((set, _get) => ({
@@ -143,5 +145,25 @@ export const useChannelStore = create<ChannelState>()((set, _get) => ({
       const channelsByGuild = { ...state.channelsByGuild, [gid]: updated };
       const channels = state.selectedGuildId === gid ? updated : state.channels;
       return { channelsByGuild, channels };
+    }),
+
+  updateLastMessageId: (channelId, messageId) =>
+    set((state) => {
+      const newByGuild: Record<string, Channel[]> = {};
+      let found = false;
+      for (const [gid, chs] of Object.entries(state.channelsByGuild)) {
+        newByGuild[gid] = chs.map((c) => {
+          if (c.id === channelId) {
+            found = true;
+            return { ...c, last_message_id: messageId };
+          }
+          return c;
+        });
+      }
+      if (!found) return state;
+      const channels = state.selectedGuildId
+        ? newByGuild[state.selectedGuildId] || state.channels
+        : state.channels;
+      return { channelsByGuild: newByGuild, channels };
     }),
 }));

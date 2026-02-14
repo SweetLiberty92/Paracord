@@ -8,6 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Accept self-signed TLS certificates so the desktop app can
             // connect to Paracord servers that use auto-generated certs.
@@ -77,6 +78,8 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::greet,
         commands::get_app_version,
+        commands::get_update_target,
+        commands::get_foreground_application,
         audio_capture::start_system_audio_capture,
         audio_capture::stop_system_audio_capture,
     ]);

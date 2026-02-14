@@ -26,5 +26,7 @@ pub struct Channel {
     pub rate_limit_per_user: Option<i32>,
     pub parent_id: Option<i64>,
     pub last_message_id: Option<i64>,
+    #[serde(default)]
+    pub required_role_ids: Vec<i64>,
     pub created_at: DateTime<Utc>,
 }

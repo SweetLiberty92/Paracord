@@ -9,16 +9,27 @@ export function GuildSettingsPage() {
   const navigate = useNavigate();
   const guilds = useGuildStore(s => s.guilds);
   const guild = guilds.find(g => g.id === guildId);
-  const { permissions, isAdmin } = usePermissions(guildId || null);
+  const { permissions, isAdmin, isLoading } = usePermissions(guildId || null);
   const canManageGuild = isAdmin || hasPermission(permissions, Permissions.MANAGE_GUILD);
+
+  if (isLoading) {
+    return (
+      <div className="relative flex h-full items-center justify-center overflow-hidden bg-bg-primary px-8">
+        <div className="pointer-events-none absolute -top-16 left-1/2 h-44 w-44 -translate-x-1/2 rounded-full bg-accent-primary/16 blur-3xl" />
+        <div className="relative max-w-md rounded-2xl border border-border-subtle bg-bg-floating p-10 text-center shadow-[0_20px_50px_rgba(5,10,20,0.45)]">
+          <p className="text-sm leading-6 text-text-muted">Loading permissions...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!canManageGuild) {
     return (
-      <div className="relative flex h-full items-center justify-center overflow-hidden bg-bg-primary px-6">
+      <div className="relative flex h-full items-center justify-center overflow-hidden bg-bg-primary px-8">
         <div className="pointer-events-none absolute -top-16 left-1/2 h-44 w-44 -translate-x-1/2 rounded-full bg-accent-primary/16 blur-3xl" />
-        <div className="relative max-w-md rounded-2xl border border-border-subtle bg-bg-floating p-7 text-center shadow-[0_20px_50px_rgba(5,10,20,0.45)]">
-          <h2 className="mb-2 text-xl font-semibold text-text-primary">Access denied</h2>
-          <p className="mb-5 text-sm leading-6 text-text-muted">
+        <div className="relative max-w-md rounded-2xl border border-border-subtle bg-bg-floating p-10 text-center shadow-[0_20px_50px_rgba(5,10,20,0.45)]">
+          <h2 className="mb-4 text-xl font-semibold text-text-primary">Access denied</h2>
+          <p className="mb-8 text-sm leading-6 text-text-muted">
             You need Manage Server permission to open server settings.
           </p>
           <button className="btn-primary" onClick={() => navigate(-1)}>

@@ -64,9 +64,9 @@ export function AppLayout() {
   return (
     <div className="relative h-[100dvh] overflow-hidden px-[calc(var(--safe-left)+0.4rem)] pb-[calc(var(--safe-bottom)+0.4rem)] pt-[calc(var(--safe-top)+0.4rem)] sm:p-2 md:p-2.5">
       {/* Ambient background glow */}
-      <div className="pointer-events-none absolute -left-24 top-0 h-80 w-80 rounded-full bg-accent-primary/18 blur-[120px]" />
-      <div className="pointer-events-none absolute right-0 top-1/4 h-72 w-72 rounded-full bg-accent-success/10 blur-[130px]" />
-      <div className="pointer-events-none absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-accent-danger/6 blur-[150px]" />
+      <div className="pointer-events-none absolute -left-24 top-0 h-80 w-80 rounded-full blur-[120px]" style={{ backgroundColor: 'var(--ambient-glow-primary)' }} />
+      <div className="pointer-events-none absolute right-0 top-1/4 h-72 w-72 rounded-full blur-[130px]" style={{ backgroundColor: 'var(--ambient-glow-success)' }} />
+      <div className="pointer-events-none absolute bottom-0 left-1/3 h-72 w-72 rounded-full blur-[150px]" style={{ backgroundColor: 'var(--ambient-glow-danger)' }} />
       {showShell && isMobile && sidebarCollapsed && !hasTopBarRoute && (
         <button
           type="button"
@@ -103,7 +103,8 @@ export function AppLayout() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setSidebarCollapsed(true)}
-                className="fixed inset-0 z-30 bg-black/55 backdrop-blur-[1px]"
+                className="fixed inset-0 z-30 backdrop-blur-[1px]"
+                style={{ backgroundColor: 'var(--overlay-backdrop)' }}
               />
               <motion.aside
                 initial={{ x: '-105%' }}
@@ -172,7 +173,8 @@ export function AppLayout() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={closeMemberPanel}
-                className="fixed inset-0 z-30 bg-black/55 backdrop-blur-[1px]"
+                className="fixed inset-0 z-30 backdrop-blur-[1px]"
+                style={{ backgroundColor: 'var(--overlay-backdrop)' }}
               />
               <motion.div
                 initial={{ x: '105%' }}

@@ -130,7 +130,7 @@ export function ChannelSidebar() {
     return (
       <div className="flex h-full flex-col bg-transparent">
         <div className="panel-divider flex h-[var(--spacing-header-height)] items-center border-b px-4 shrink-0">
-          <div className="relative w-full">
+          <div className="relative my-3 w-full">
             <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
             <input
               type="text"
@@ -163,7 +163,7 @@ export function ChannelSidebar() {
             Friends
           </button>
 
-          <div className="group mb-1 mt-6 flex items-center justify-between px-2">
+          <div className="group mb-3 mt-5 flex items-center justify-between px-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-text-muted transition-colors group-hover:text-text-secondary">
               Direct Messages
             </span>
@@ -194,7 +194,7 @@ export function ChannelSidebar() {
                     navigate(`/app/dms/${dm.id}`);
                   }}
                   className={cn(
-                    'group flex w-full items-center gap-3.5 rounded-xl border px-3.5 py-3 transition-all',
+                    'group flex w-full items-center gap-3.5 rounded-xl border px-3.5 py-3.5 transition-all',
                     selectedChannelId === dm.id
                       ? 'bg-bg-mod-subtle text-text-primary border-border-strong'
                       : 'text-text-secondary border-transparent hover:border-border-subtle hover:bg-bg-mod-subtle hover:text-text-primary'
@@ -339,12 +339,12 @@ export function ChannelSidebar() {
         </>
       )}
 
-      <div className="flex-1 overflow-y-auto px-3 pt-4 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto px-3 pt-5 scrollbar-thin">
         {categoryGroups.map((cat) => (
-          <div key={cat.id || '__uncategorized'} className="mb-2">
+          <div key={cat.id || '__uncategorized'} className="mb-4">
             {cat.id && (
               <button
-                className="flex w-full items-center gap-0.5 px-1.5 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted transition-colors hover:text-text-secondary"
+                className="flex w-full items-center gap-0.5 px-1.5 py-2 mt-4 text-xs font-semibold uppercase tracking-wide text-text-muted transition-colors hover:text-text-secondary"
                 onClick={() => toggleCategory(cat.id!)}
               >
                 <div>
@@ -370,7 +370,7 @@ export function ChannelSidebar() {
                       }
                     }}
                     className={cn(
-                      'group mb-0.5 flex w-full cursor-pointer items-center rounded-xl border px-3.5 py-2.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary',
+                      'group mb-1 flex w-full cursor-pointer items-center rounded-xl border px-3.5 py-3 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary',
                       isSelected
                         ? 'border-border-strong bg-bg-mod-subtle text-text-primary'
                         : 'border-transparent text-text-secondary hover:border-border-subtle hover:bg-bg-mod-subtle hover:text-text-primary'

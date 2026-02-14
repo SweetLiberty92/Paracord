@@ -281,12 +281,12 @@ export function CommandPalette() {
             onKeyDown={handleKeyDown}
           >
             {/* Search input */}
-            <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3">
+            <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-3.5">
               <Search size={18} className="shrink-0 text-text-muted" />
               <input
                 ref={inputRef}
                 autoFocus
-                className="flex-1 bg-transparent text-[15px] text-text-primary outline-none placeholder:text-text-muted"
+                className="flex-1 bg-transparent px-1 py-0.5 text-[15px] text-text-primary outline-none placeholder:text-text-muted"
                 placeholder="Where would you like to go?"
                 value={query}
                 onChange={(e) => {
@@ -303,8 +303,8 @@ export function CommandPalette() {
             <div ref={listRef} className="max-h-[400px] overflow-y-auto p-2 scrollbar-thin">
               {groupedItems.length > 0 ? (
                 groupedItems.map((group) => (
-                  <div key={group.category} className="mb-1">
-                    <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-text-muted">
+                  <div key={group.category} className="mb-3 space-y-1.5">
+                    <div className="mt-5 first:mt-0 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-text-muted">
                       {group.category}
                     </div>
                     {group.items.map((item) => {
@@ -317,7 +317,7 @@ export function CommandPalette() {
                           onClick={() => handleSelect(item)}
                           onMouseEnter={() => setSelectedIndex(currentIndex)}
                           className={cn(
-                            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
+                            'flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-left transition-colors',
                             isSelected
                               ? 'bg-accent-primary/12 text-text-primary'
                               : 'text-text-secondary hover:bg-bg-mod-subtle'

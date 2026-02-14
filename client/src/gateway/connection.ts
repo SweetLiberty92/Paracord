@@ -1,4 +1,4 @@
-import type { GatewayPayload } from '../types';
+import type { Activity, GatewayPayload } from '../types';
 import { useAuthStore } from '../stores/authStore';
 import { useGuildStore } from '../stores/guildStore';
 import { useChannelStore } from '../stores/channelStore';
@@ -182,6 +182,7 @@ class GatewayConnection {
 
       case GatewayEvents.MESSAGE_CREATE:
         useMessageStore.getState().addMessage(data.channel_id, data);
+        useChannelStore.getState().updateLastMessageId(data.channel_id, data.id);
         break;
       case GatewayEvents.MESSAGE_UPDATE:
         useMessageStore.getState().updateMessage(data.channel_id, data);
@@ -297,10 +298,15 @@ class GatewayConnection {
     }
   }
 
-  updatePresence(status: string) {
+  updatePresence(status: string, activities: Activity[] = [], customStatus: string | null = null) {
     this.send({
       op: 3,
-      d: { status, afk: false },
+      d: {
+        status,
+        afk: false,
+        activities,
+        custom_status: customStatus,
+      },
     });
   }
 

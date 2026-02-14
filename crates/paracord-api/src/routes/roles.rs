@@ -4,7 +4,6 @@ use axum::{
     Json,
 };
 use paracord_core::AppState;
-use paracord_models::permissions::Permissions;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -74,15 +73,28 @@ pub async fn create_role(
         guild.owner_id,
         auth.user_id,
     );
-    paracord_core::permissions::require_permission(perms, Permissions::MANAGE_ROLES)?;
+    if !paracord_core::permissions::is_server_admin(perms) {
+        return Err(ApiError::Forbidden);
+    }
 
     let role_id = paracord_util::snowflake::generate(1);
-    let role = paracord_db::roles::create_role(
+    paracord_db::roles::create_role(
         &state.db,
         role_id,
         guild_id,
         &body.name,
         body.permissions,
+    )
+    .await
+    .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let role = paracord_db::roles::update_role(
+        &state.db,
+        role_id,
+        None,
+        Some(body.color),
+        Some(body.hoist),
+        None,
+        Some(body.mentionable),
     )
     .await
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
@@ -136,12 +148,17 @@ pub async fn update_role(
         guild.owner_id,
         auth.user_id,
     );
-    paracord_core::permissions::require_permission(perms, Permissions::MANAGE_ROLES)?;
+    if !paracord_core::permissions::is_server_admin(perms) {
+        return Err(ApiError::Forbidden);
+    }
 
     let target_role = paracord_db::roles::get_role(&state.db, role_id)
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
         .ok_or(ApiError::NotFound)?;
+    if target_role.guild_id() != guild_id {
+        return Err(ApiError::NotFound);
+    }
     if auth.user_id != guild.owner_id {
         let actor_top_role_pos = user_roles.iter().map(|r| r.position).max().unwrap_or(0);
         if target_role.position >= actor_top_role_pos {
@@ -197,7 +214,7 @@ pub async fn delete_role(
 
     if role_id == guild_id {
         return Err(ApiError::BadRequest(
-            "Cannot delete the @everyone role".into(),
+            "Cannot delete the default Member role".into(),
         ));
     }
 
@@ -209,12 +226,17 @@ pub async fn delete_role(
         guild.owner_id,
         auth.user_id,
     );
-    paracord_core::permissions::require_permission(perms, Permissions::MANAGE_ROLES)?;
+    if !paracord_core::permissions::is_server_admin(perms) {
+        return Err(ApiError::Forbidden);
+    }
 
     let target_role = paracord_db::roles::get_role(&state.db, role_id)
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
         .ok_or(ApiError::NotFound)?;
+    if target_role.guild_id() != guild_id {
+        return Err(ApiError::NotFound);
+    }
     if auth.user_id != guild.owner_id {
         let actor_top_role_pos = user_roles.iter().map(|r| r.position).max().unwrap_or(0);
         if target_role.position >= actor_top_role_pos {

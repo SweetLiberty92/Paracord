@@ -413,7 +413,7 @@ export function UnifiedSidebar() {
         )}
 
         {/* Home button - prominent, above search */}
-        <div className="px-3 pt-2 pb-1">
+        <div className="px-3 pt-3 pb-2">
           <button
             onClick={() => {
               selectGuild(null);
@@ -442,28 +442,29 @@ export function UnifiedSidebar() {
 
         {/* Quick search trigger - subtle, below home */}
         {!sidebarCollapsed && (
-          <div className="px-3 pb-1 sm:px-4">
+          <div className="px-3 pt-1 pb-2">
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex w-full items-center gap-1.5 rounded-md px-2.5 text-text-muted transition-all hover:bg-bg-mod-subtle"
-              style={{ height: isMobile ? '30px' : '22px', fontSize: isMobile ? '11px' : '10px', opacity: isMobile ? 0.8 : 0.45 }}
+              className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14.5px] font-medium text-text-secondary transition-all hover:bg-bg-mod-subtle hover:text-text-primary"
             >
-              <Search size={9} />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-mod-subtle text-text-muted transition-colors group-hover:text-text-secondary">
+                <Search size={19} />
+              </div>
               <span className="flex-1 text-left">Search</span>
-              <kbd className="hidden rounded bg-bg-primary/50 px-1 py-0.5 font-mono sm:inline-block" style={{ fontSize: '8px', opacity: 0.5 }}>
-                <Command size={7} className="inline -mt-px" />K
+              <kbd className="hidden rounded bg-bg-primary/50 px-1.5 py-0.5 font-mono text-[10px] opacity-60 sm:inline-block">
+                <Command size={9} className="inline -mt-px" />K
               </kbd>
             </button>
           </div>
         )}
 
         {/* Navigation area */}
-        <div className="scrollbar-thin flex-1 overflow-y-auto px-2 py-2 sm:px-3">
+        <div className="scrollbar-thin flex-1 overflow-y-auto px-3 py-2">
 
           {/* DM channels when at home */}
           {isHome && !sidebarCollapsed && (
-            <div className="mb-3">
-              <div className="group mb-2 mt-6 flex items-center justify-between px-3">
+            <div className="mb-2">
+              <div className="group mt-2 mb-2 flex items-center justify-between px-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted/70">
                   Direct Messages
                 </span>
@@ -476,7 +477,7 @@ export function UnifiedSidebar() {
               </div>
 
               {/* DM search */}
-              <div className="px-1 mb-1">
+              <div className="px-1 pb-2">
                 <div className="relative">
                   <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
                   <input
@@ -489,7 +490,7 @@ export function UnifiedSidebar() {
                 </div>
               </div>
 
-              <div className="space-y-0.5">
+              <div className="space-y-1.5">
                 {filteredDms.map((dm) => (
                   <button
                     key={dm.id}
@@ -499,7 +500,7 @@ export function UnifiedSidebar() {
                       collapseSidebarOnPhone();
                     }}
                     className={cn(
-                      'group flex w-full items-center gap-3 rounded-xl px-3 py-2 transition-all',
+                      'group flex w-full items-center gap-3 rounded-xl px-3 py-3 transition-all',
                       selectedChannelId === dm.id
                         ? 'bg-bg-mod-strong text-text-primary shadow-sm'
                         : 'text-text-secondary hover:bg-bg-mod-subtle hover:text-text-primary'
@@ -522,11 +523,11 @@ export function UnifiedSidebar() {
           )}
 
           {/* Divider between home and spaces */}
-          <div className="mx-3 my-2 h-px bg-border-subtle/60" />
+          <div className="my-2 h-px bg-border-subtle/60" />
 
           {/* Spaces (guilds) header */}
           {!sidebarCollapsed && (
-            <div className="group mb-2 flex items-center justify-between px-3 mt-4">
+            <div className="group mt-2 mb-3 flex items-center justify-between px-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted/70">
                 Spaces
               </span>
@@ -540,7 +541,7 @@ export function UnifiedSidebar() {
           )}
 
           {/* Guild tree */}
-          <div className="space-y-0.5">
+          <div className="space-y-1.5">
             {guilds.map((guild) => {
               const isActive = selectedGuildId === guild.id;
               const isExpanded = expandedGuilds.has(guild.id);
@@ -630,12 +631,12 @@ export function UnifiedSidebar() {
                           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                           className="overflow-hidden"
                         >
-                          <div className="ml-[18px] border-l border-border-subtle/25 pl-3 py-1 space-y-3">
+                          <div className="ml-[18px] border-l border-border-subtle/25 pl-3 pt-2 pb-1 space-y-4">
                             {categoryGroups.map((cat) => (
-                              <div key={cat.id || '__uncategorized'} className="mb-1">
+                              <div key={cat.id || '__uncategorized'} className="mb-4">
                                 {cat.id && (
                                   <button
-                                    className="flex w-full items-center gap-1.5 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-muted transition-colors hover:text-text-secondary"
+                                    className="flex w-full items-center gap-1.5 px-2 py-2 mt-4 text-[10px] font-bold uppercase tracking-wider text-text-muted transition-colors hover:text-text-secondary"
                                     onClick={() => toggleCategory(cat.id!)}
                                   >
                                     {collapsedCategories.has(cat.id) ? <ChevronRight size={9} /> : <ChevronDown size={9} />}
@@ -651,7 +652,7 @@ export function UnifiedSidebar() {
                                       <button
                                         onClick={() => handleChannelClick(ch, guild.id)}
                                         className={cn(
-                                          'group/ch flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-all border',
+                                          'group/ch flex w-full items-center gap-2.5 rounded-lg px-3 py-3 text-[13.5px] transition-all border',
                                           isSelected
                                             ? 'bg-accent-primary/12 text-white font-medium shadow-sm border-accent-primary/25'
                                             : isVoice

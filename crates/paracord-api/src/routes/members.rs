@@ -62,23 +62,22 @@ pub async fn update_member(
     Path((guild_id, user_id)): Path<(i64, i64)>,
     Json(body): Json<UpdateMemberRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    // Permission check: MANAGE_NICKNAMES for nick changes on others
     let guild = paracord_db::guilds::get_guild(&state.db, guild_id)
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
         .ok_or(ApiError::NotFound)?;
+    let actor_roles = paracord_db::roles::get_member_roles(&state.db, auth.user_id, guild_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let actor_perms = paracord_core::permissions::compute_permissions_from_roles(
+        &actor_roles,
+        guild.owner_id,
+        auth.user_id,
+    );
 
-    if auth.user_id != user_id {
-        let roles = paracord_db::roles::get_member_roles(&state.db, auth.user_id, guild_id)
-            .await
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
-        let perms = paracord_core::permissions::compute_permissions_from_roles(
-            &roles,
-            guild.owner_id,
-            auth.user_id,
-        );
+    if body.nick.is_some() && auth.user_id != user_id {
         paracord_core::permissions::require_permission(
-            perms,
+            actor_perms,
             paracord_models::permissions::Permissions::MANAGE_NICKNAMES,
         )?;
     }
@@ -94,19 +93,26 @@ pub async fn update_member(
     .await
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
 
+    let mut role_ids: Vec<String> = paracord_db::roles::get_member_roles(&state.db, user_id, guild_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+        .iter()
+        .map(|role| role.id.to_string())
+        .collect();
+
     if let Some(raw_roles) = body.roles {
-        let actor_roles = paracord_db::roles::get_member_roles(&state.db, auth.user_id, guild_id)
+        if !paracord_core::permissions::is_server_admin(actor_perms) {
+            return Err(ApiError::Forbidden);
+        }
+
+        let guild_roles = paracord_db::roles::get_guild_roles(&state.db, guild_id)
             .await
             .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
-        let actor_perms = paracord_core::permissions::compute_permissions_from_roles(
-            &actor_roles,
-            guild.owner_id,
-            auth.user_id,
-        );
-        paracord_core::permissions::require_permission(
-            actor_perms,
-            paracord_models::permissions::Permissions::MANAGE_ROLES,
-        )?;
+        let role_by_id: std::collections::HashMap<i64, paracord_db::roles::RoleRow> = guild_roles
+            .iter()
+            .cloned()
+            .map(|role| (role.id, role))
+            .collect();
         let requested_role_ids: Vec<i64> = raw_roles
             .iter()
             .map(|r| {
@@ -114,13 +120,40 @@ pub async fn update_member(
                     .map_err(|_| ApiError::BadRequest("Invalid role id".into()))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if requested_role_ids
+            .iter()
+            .any(|role_id| !role_by_id.contains_key(role_id))
+        {
+            return Err(ApiError::BadRequest(
+                "One or more roles do not belong to this guild".into(),
+            ));
+        }
+
         let existing_roles = paracord_db::roles::get_member_roles(&state.db, user_id, guild_id)
             .await
             .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+
+        let mut requested_ids: std::collections::HashSet<i64> =
+            requested_role_ids.iter().copied().collect();
+        requested_ids.insert(guild_id); // Member role is always required
         let existing_ids: std::collections::HashSet<i64> =
             existing_roles.iter().map(|r| r.id).collect();
-        let requested_ids: std::collections::HashSet<i64> =
-            requested_role_ids.iter().copied().collect();
+
+        if auth.user_id != guild.owner_id {
+            let actor_top_role_pos = actor_roles.iter().map(|r| r.position).max().unwrap_or(0);
+            for role_id in &requested_ids {
+                if *role_id == guild_id {
+                    continue;
+                }
+                let Some(role) = role_by_id.get(role_id) else {
+                    continue;
+                };
+                if role.position >= actor_top_role_pos {
+                    return Err(ApiError::Forbidden);
+                }
+            }
+        }
+
         for role_id in requested_ids.difference(&existing_ids) {
             paracord_db::roles::add_member_role(&state.db, user_id, guild_id, *role_id)
                 .await
@@ -133,6 +166,13 @@ pub async fn update_member(
                     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
             }
         }
+
+        role_ids = paracord_db::roles::get_member_roles(&state.db, user_id, guild_id)
+            .await
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+            .iter()
+            .map(|role| role.id.to_string())
+            .collect();
     }
 
     let mut timed_out_until = updated.communication_disabled_until;
@@ -160,6 +200,7 @@ pub async fn update_member(
         "mute": updated.mute,
         "communication_disabled_until": timed_out_until.map(|v| v.to_rfc3339()),
         "joined_at": updated.joined_at.to_rfc3339(),
+        "roles": role_ids.clone(),
     });
 
     state.event_bus.dispatch(
@@ -169,6 +210,7 @@ pub async fn update_member(
             "user_id": user_id.to_string(),
             "nick": updated.nick,
             "communication_disabled_until": timed_out_until.map(|v| v.to_rfc3339()),
+            "roles": role_ids.clone(),
         }),
         Some(guild_id),
     );
@@ -182,6 +224,7 @@ pub async fn update_member(
         Some(json!({
             "nick": updated.nick,
             "communication_disabled_until": timed_out_until.map(|v| v.to_rfc3339()),
+            "roles": role_ids,
         })),
     )
     .await;

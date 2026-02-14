@@ -28,6 +28,101 @@ fn session_cache() -> &'static tokio::sync::RwLock<HashMap<String, CachedSession
     SESSION_CACHE.get_or_init(|| tokio::sync::RwLock::new(HashMap::new()))
 }
 
+const MAX_ACTIVITY_ITEMS: usize = 8;
+const MAX_ACTIVITY_TEXT_LEN: usize = 256;
+
+fn truncate_for_presence(value: &str, max: usize) -> String {
+    let mut out = String::new();
+    for ch in value.chars().take(max) {
+        out.push(ch);
+    }
+    out
+}
+
+fn normalize_status(raw: Option<&str>) -> &'static str {
+    match raw.unwrap_or("online") {
+        "online" => "online",
+        "idle" => "idle",
+        "dnd" => "dnd",
+        "offline" => "offline",
+        "invisible" => "offline",
+        _ => "online",
+    }
+}
+
+fn extract_activities(raw: Option<&Value>) -> Vec<Value> {
+    let mut activities = Vec::new();
+    let Some(Value::Array(list)) = raw else {
+        return activities;
+    };
+
+    for entry in list.iter().take(MAX_ACTIVITY_ITEMS) {
+        let Some(obj) = entry.as_object() else {
+            continue;
+        };
+        let name = obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate_for_presence(s, MAX_ACTIVITY_TEXT_LEN))
+            .unwrap_or_else(|| "Unknown".to_string());
+        let activity_type = obj
+            .get("type")
+            .or_else(|| obj.get("activity_type"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let details = obj
+            .get("details")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate_for_presence(s, MAX_ACTIVITY_TEXT_LEN));
+        let state = obj
+            .get("state")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate_for_presence(s, MAX_ACTIVITY_TEXT_LEN));
+        let started_at = obj
+            .get("started_at")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate_for_presence(s, MAX_ACTIVITY_TEXT_LEN));
+        let application_id = obj
+            .get("application_id")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate_for_presence(s, MAX_ACTIVITY_TEXT_LEN));
+
+        activities.push(json!({
+            "name": name,
+            "type": activity_type,
+            "details": details,
+            "state": state,
+            "started_at": started_at,
+            "application_id": application_id,
+        }));
+    }
+
+    activities
+}
+
+fn build_presence_payload(
+    user_id: i64,
+    status: Option<&str>,
+    activities: Option<&Value>,
+    custom_status: Option<&str>,
+) -> Value {
+    json!({
+        "user_id": user_id.to_string(),
+        "status": normalize_status(status),
+        "custom_status": custom_status.map(|v| truncate_for_presence(v, MAX_ACTIVITY_TEXT_LEN)),
+        "activities": extract_activities(activities),
+    })
+}
+
+fn default_presence_payload(user_id: i64, status: &str) -> Value {
+    json!({
+        "user_id": user_id.to_string(),
+        "status": normalize_status(Some(status)),
+        "custom_status": Value::Null,
+        "activities": [],
+    })
+}
+
 pub async fn handle_connection(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
 
@@ -126,6 +221,7 @@ pub async fn handle_connection(socket: WebSocket, state: AppState) {
 
         // Snapshot of currently online users for building presence lists
         let online_snapshot = state.online_users.read().await.clone();
+        let presence_snapshot = state.user_presences.read().await.clone();
 
         // Fetch guild data for READY
         let mut guilds_json = Vec::new();
@@ -134,23 +230,6 @@ pub async fn handle_connection(socket: WebSocket, state: AppState) {
                 .await
                 .ok()
                 .flatten();
-            let channels = paracord_db::channels::get_guild_channels(&state.db, gid)
-                .await
-                .unwrap_or_default();
-
-            let channels_json: Vec<Value> = channels
-                .iter()
-                .map(|c| {
-                    json!({
-                        "id": c.id.to_string(),
-                        "name": c.name,
-                        "channel_type": c.channel_type,
-                        "position": c.position,
-                        "guild_id": c.guild_id().map(|id| id.to_string()),
-                        "parent_id": c.parent_id.map(|id| id.to_string()),
-                    })
-                })
-                .collect();
 
             let voice_states = paracord_db::voice_states::get_guild_voice_states(&state.db, gid)
                 .await
@@ -184,14 +263,48 @@ pub async fn handle_connection(socket: WebSocket, state: AppState) {
                 .iter()
                 .filter(|m| online_snapshot.contains(&m.user_id))
                 .map(|m| {
-                    json!({
-                        "user_id": m.user_id.to_string(),
-                        "status": "online",
-                    })
+                    presence_snapshot
+                        .get(&m.user_id)
+                        .cloned()
+                        .unwrap_or_else(|| default_presence_payload(m.user_id, "online"))
                 })
                 .collect();
 
             if let Some(g) = guild {
+                let channels = paracord_db::channels::get_guild_channels(&state.db, gid)
+                    .await
+                    .unwrap_or_default();
+                let mut channels_json: Vec<Value> = Vec::with_capacity(channels.len());
+                for c in channels {
+                    let perms = paracord_core::permissions::compute_channel_permissions(
+                        &state.db,
+                        gid,
+                        c.id,
+                        g.owner_id,
+                        session.user_id,
+                    )
+                    .await
+                    .unwrap_or_else(|_| paracord_models::permissions::Permissions::empty());
+                    if !perms.contains(paracord_models::permissions::Permissions::VIEW_CHANNEL) {
+                        continue;
+                    }
+                    let required_role_ids: Vec<String> = paracord_db::channels::parse_required_role_ids(
+                        &c.required_role_ids,
+                    )
+                    .into_iter()
+                    .map(|id| id.to_string())
+                    .collect();
+                    channels_json.push(json!({
+                        "id": c.id.to_string(),
+                        "name": c.name,
+                        "channel_type": c.channel_type,
+                        "position": c.position,
+                        "guild_id": c.guild_id().map(|id| id.to_string()),
+                        "parent_id": c.parent_id.map(|id| id.to_string()),
+                        "required_role_ids": required_role_ids,
+                    }));
+                }
+
                 guilds_json.push(json!({
                     "id": g.id.to_string(),
                     "name": g.name,
@@ -227,14 +340,36 @@ pub async fn handle_connection(socket: WebSocket, state: AppState) {
 
     // Track this user as online
     state.online_users.write().await.insert(session_user_id);
+    let online_presence = {
+        let existing = state
+            .user_presences
+            .read()
+            .await
+            .get(&session_user_id)
+            .cloned();
+        if let Some(mut value) = existing {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("user_id".to_string(), json!(session_user_id.to_string()));
+                obj.insert("status".to_string(), json!("online"));
+                if !obj.contains_key("activities") {
+                    obj.insert("activities".to_string(), json!([]));
+                }
+            }
+            value
+        } else {
+            default_presence_payload(session_user_id, "online")
+        }
+    };
+    state
+        .user_presences
+        .write()
+        .await
+        .insert(session_user_id, online_presence.clone());
 
     // Publish presence update for this user coming online
     state.event_bus.dispatch(
         EVENT_PRESENCE_UPDATE,
-        json!({
-            "user_id": session_user_id.to_string(),
-            "status": "online",
-        }),
+        online_presence,
         None,
     );
 
@@ -330,14 +465,17 @@ pub async fn handle_connection(socket: WebSocket, state: AppState) {
 
     // Remove user from online tracking
     state.online_users.write().await.remove(&session_user_id);
+    let offline_presence = default_presence_payload(session_user_id, "offline");
+    state
+        .user_presences
+        .write()
+        .await
+        .insert(session_user_id, offline_presence.clone());
 
     // Publish presence offline on disconnect
     state.event_bus.dispatch(
         EVENT_PRESENCE_UPDATE,
-        json!({
-            "user_id": session_user_id.to_string(),
-            "status": "offline",
-        }),
+        offline_presence,
         None,
     );
 }
@@ -485,16 +623,48 @@ async fn handle_client_message(
         }
         OP_PRESENCE_UPDATE => {
             if let Some(d) = payload.get("d") {
-                let status = d.get("status").and_then(|v| v.as_str()).unwrap_or("online");
-                let custom_status = d.get("custom_status").and_then(|v| v.as_str());
+                let existing_presence = state
+                    .user_presences
+                    .read()
+                    .await
+                    .get(&session.user_id)
+                    .cloned();
+                let status = d.get("status").and_then(|v| v.as_str());
+                let custom_status = d
+                    .get("custom_status")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        existing_presence
+                            .as_ref()
+                            .and_then(|v| v.get("custom_status"))
+                            .and_then(|v| v.as_str())
+                    });
+                let activities = d.get("activities").or_else(|| {
+                    existing_presence
+                        .as_ref()
+                        .and_then(|v| v.get("activities"))
+                });
+                let effective_status = status.or_else(|| {
+                    existing_presence
+                        .as_ref()
+                        .and_then(|v| v.get("status"))
+                        .and_then(|v| v.as_str())
+                });
+                let presence_payload = build_presence_payload(
+                    session.user_id,
+                    effective_status,
+                    activities,
+                    custom_status,
+                );
+                state
+                    .user_presences
+                    .write()
+                    .await
+                    .insert(session.user_id, presence_payload.clone());
 
                 state.event_bus.dispatch(
                     EVENT_PRESENCE_UPDATE,
-                    json!({
-                        "user_id": session.user_id.to_string(),
-                        "status": status,
-                        "custom_status": custom_status,
-                    }),
+                    presence_payload,
                     None,
                 );
             }

@@ -154,6 +154,10 @@
   --glass-modal-fill-bottom: rgba(12, 17, 28, 0.92);
   --panel-divider-glint: rgba(255, 255, 255, 0.03);
   --scrollbar-auto-thumb-hover: rgba(129, 160, 219, 0.52);
+  --ambient-glow-primary: rgba(111, 134, 255, 0.18);
+  --ambient-glow-success: rgba(53, 193, 143, 0.1);
+  --ambient-glow-danger: rgba(255, 93, 114, 0.06);
+  --accent-primary-rgb: 111, 134, 255;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -231,48 +235,60 @@
   --glass-modal-fill-bottom: rgba(236, 243, 252, 0.94);
   --panel-divider-glint: rgba(20, 44, 82, 0.08);
   --scrollbar-auto-thumb-hover: rgba(88, 110, 150, 0.45);
+  --sidebar-bg: rgba(248, 251, 255, 0.74);
+  --sidebar-border: rgba(36, 58, 92, 0.14);
+  --ambient-glow-primary: rgba(80, 103, 241, 0.19);
+  --ambient-glow-success: rgba(31, 159, 114, 0.14);
+  --ambient-glow-danger: rgba(215, 59, 97, 0.08);
+  --accent-primary-rgb: 71, 111, 255;
 }
 
 :root[data-theme='amoled'] {
-  --bg-primary: #06080d;
-  --bg-secondary: #090c14;
-  --bg-tertiary: #020307;
-  --bg-accent: #101522;
-  --bg-floating: rgba(4, 7, 12, 0.94);
-  --bg-mod-subtle: rgba(255, 255, 255, 0.045);
-  --bg-mod-strong: rgba(255, 255, 255, 0.11);
+  --bg-primary: #000000;
+  --bg-secondary: #000000;
+  --bg-tertiary: #000000;
+  --bg-accent: #080a0f;
+  --bg-floating: rgba(0, 0, 0, 0.98);
+  --bg-mod-subtle: rgba(255, 255, 255, 0.055);
+  --bg-mod-strong: rgba(255, 255, 255, 0.12);
 
   --text-primary: #f4f7ff;
-  --text-secondary: #b0bdd6;
-  --text-muted: #7383a0;
-  --text-link: #7fc6ff;
+  --text-secondary: #aebad2;
+  --text-muted: #6f7d96;
+  --text-link: #8dc2ff;
 
-  --accent-primary: #7288ff;
-  --accent-primary-hover: #8ba0ff;
+  --accent-primary: #748dff;
+  --accent-primary-hover: #8da3ff;
   --accent-success: #35c18f;
   --accent-danger: #ff5d72;
   --accent-warning: #ffce62;
 
-  --border-subtle: rgba(158, 184, 232, 0.18);
-  --border-strong: rgba(176, 202, 245, 0.32);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.22);
   --channel-icon: #90a0bd;
-  --interactive-normal: #a0aec6;
+  --interactive-normal: #a9b5cd;
   --interactive-hover: #edf2ff;
   --interactive-active: #ffffff;
-  --interactive-muted: #53607b;
+  --interactive-muted: #4d5871;
 
-  --app-bg-layer-one: radial-gradient(120% 95% at 0% 0%, rgba(114, 136, 255, 0.13) 0%, rgba(114, 136, 255, 0) 55%);
-  --app-bg-layer-two: radial-gradient(115% 90% at 100% 0%, rgba(53, 193, 143, 0.08) 0%, rgba(53, 193, 143, 0) 48%);
-  --app-bg-base: linear-gradient(180deg, #04060a 0%, #020307 100%);
-  --overlay-backdrop: rgba(0, 0, 0, 0.78);
-  --glass-rail-fill-top: rgba(255, 255, 255, 0.05);
-  --glass-rail-fill-bottom: rgba(255, 255, 255, 0.008);
-  --glass-panel-fill-top: rgba(255, 255, 255, 0.042);
-  --glass-panel-fill-bottom: rgba(255, 255, 255, 0.012);
-  --glass-modal-fill-top: rgba(9, 13, 22, 0.96);
-  --glass-modal-fill-bottom: rgba(3, 6, 12, 0.95);
-  --panel-divider-glint: rgba(255, 255, 255, 0.035);
-  --scrollbar-auto-thumb-hover: rgba(129, 160, 219, 0.5);
+  --app-bg-layer-one: none;
+  --app-bg-layer-two: none;
+  --app-bg-base: #000000;
+  --overlay-backdrop: rgba(0, 0, 0, 0.86);
+  --glass-rail-fill-top: rgba(0, 0, 0, 0.9);
+  --glass-rail-fill-bottom: rgba(0, 0, 0, 0.9);
+  --glass-panel-fill-top: rgba(0, 0, 0, 0.86);
+  --glass-panel-fill-bottom: rgba(0, 0, 0, 0.86);
+  --glass-modal-fill-top: rgba(0, 0, 0, 0.94);
+  --glass-modal-fill-bottom: rgba(0, 0, 0, 0.94);
+  --panel-divider-glint: rgba(255, 255, 255, 0.02);
+  --scrollbar-auto-thumb-hover: rgba(255, 255, 255, 0.36);
+  --sidebar-bg: rgba(0, 0, 0, 0.94);
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --ambient-glow-primary: transparent;
+  --ambient-glow-success: transparent;
+  --ambient-glow-danger: transparent;
+  --accent-primary-rgb: 116, 141, 255;
 }
 
 * {
@@ -400,6 +416,10 @@ html[data-theme='amoled'] #root {
   backdrop-filter: blur(22px) saturate(150%);
 }
 
+:root[data-theme='amoled'] :where(.glass-rail, .glass-panel, .glass-modal) {
+  backdrop-filter: blur(10px) saturate(105%);
+}
+
 .panel-divider {
   border-color: var(--border-subtle);
   box-shadow: inset 0 1px 0 var(--panel-divider-glint);
@@ -465,6 +485,81 @@ html[data-theme='amoled'] #root {
   transform: scale(0.97);
 }
 
+:where(
+  .card-surface,
+  div[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+  div[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+  div[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-secondary/60"],
+  div[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-secondary/60"],
+  div[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-primary/60"],
+  div[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-primary/60"],
+  section[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+  section[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+  li[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+  li[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"]
+) {
+  position: relative;
+  isolation: isolate;
+  border-color: color-mix(in srgb, var(--border-strong) 68%, var(--border-subtle) 32%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--border-strong) 58%, transparent) inset,
+    0 10px 20px rgba(2, 8, 18, 0.22),
+    0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+:root[data-theme='light']
+  :where(
+    .card-surface,
+    div[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+    div[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+    div[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-secondary/60"],
+    div[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-secondary/60"],
+    div[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-primary/60"],
+    div[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-primary/60"],
+    section[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+    section[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+    li[class*="rounded-xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"],
+    li[class*="rounded-2xl"][class*="border-border-subtle"][class*="bg-bg-mod-subtle"]
+  ) {
+  border-color: color-mix(in srgb, var(--border-strong) 74%, var(--border-subtle) 26%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--border-strong) 60%, transparent) inset,
+    0 10px 20px rgba(28, 49, 84, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.card-stack-relaxed {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.card-stack-roomy {
+  display: flex;
+  flex-direction: column;
+  gap: 1.7rem;
+}
+
+.settings-action-row {
+  margin-top: 1.15rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 50%, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.settings-action-row.align-end {
+  justify-content: flex-end;
+}
+
 /* Modal overlay */
 .modal-overlay {
   position: fixed;
@@ -481,6 +576,8 @@ html[data-theme='amoled'] #root {
 
 /* Primary button (e.g., "Create", "Log In") */
 .btn-primary {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -497,7 +594,9 @@ html[data-theme='amoled'] #root {
   text-align: center;
   white-space: nowrap;
   letter-spacing: 0.01em;
-  box-shadow: 0 10px 24px rgba(56, 82, 196, 0.32);
+  box-shadow:
+    0 10px 24px rgba(56, 82, 196, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--accent-primary) 62%, white 38%) inset;
   cursor: pointer;
   transition:
     background-color var(--duration-normal) var(--ease-out),
@@ -510,6 +609,9 @@ html[data-theme='amoled'] #root {
   background-color: var(--accent-primary-hover);
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent-primary-hover) 75%, #ffffff 25%);
+  box-shadow:
+    0 12px 28px rgba(68, 95, 216, 0.38),
+    0 0 0 1px color-mix(in srgb, var(--accent-primary-hover) 66%, white 34%) inset;
 }
 
 .btn-primary:active {

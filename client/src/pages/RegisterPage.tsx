@@ -79,73 +79,75 @@ export function RegisterPage() {
   return (
     <div className="auth-shell">
       <div className="flex w-full justify-center">
-        <form onSubmit={handleSubmit} className="auth-card">
-          <div className="mb-7 text-center">
+        <form onSubmit={handleSubmit} className="auth-card space-y-8 p-10">
+          <div className="text-center">
             <h1 className="text-3xl font-bold leading-tight text-text-primary">Create an account</h1>
-            <p className="mt-1.5 text-sm text-text-muted">Pick your username and start hanging out.</p>
+            <p className="mt-3 text-sm text-text-muted">Pick your username and start hanging out.</p>
           </div>
 
           {error && (
-            <div className="mb-4 rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-3 py-2.5 text-sm font-medium text-accent-danger">
+            <div className="rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-5 py-4 text-sm font-medium text-accent-danger">
               {error}
             </div>
           )}
 
-          <label className="mb-4 block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Email <span className="text-accent-danger">*</span>
-            </span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="input-field mt-1.5"
-              placeholder="you@example.com"
-            />
-          </label>
+          <div className="space-y-7">
+            <label className="block">
+              <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Email <span className="text-accent-danger">*</span>
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="input-field"
+                placeholder="you@example.com"
+              />
+            </label>
 
-          <label className="mb-4 block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Display Name</span>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="input-field mt-1.5"
-              placeholder="How people see you"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">Display Name</span>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="input-field"
+                placeholder="How people see you"
+              />
+            </label>
 
-          <label className="mb-4 block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Username <span className="text-accent-danger">*</span>
-            </span>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              className="input-field mt-1.5"
-              placeholder="Unique account handle"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Username <span className="text-accent-danger">*</span>
+              </span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="input-field"
+                placeholder="Unique account handle"
+              />
+            </label>
 
-          <label className="mb-6 block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Password <span className="text-accent-danger">*</span>
-            </span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={MIN_PASSWORD_LENGTH}
-              className="input-field mt-1.5"
-              placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
-            />
-          </label>
+            <label className="block">
+              <span className="mb-3 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Password <span className="text-accent-danger">*</span>
+              </span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={MIN_PASSWORD_LENGTH}
+                className="input-field"
+                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+              />
+            </label>
+          </div>
 
-          <label className="mb-6 flex cursor-pointer items-start gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-3.5 py-3.5">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-4 py-4">
             <input
               type="checkbox"
               checked={agreed}
@@ -165,11 +167,11 @@ export function RegisterPage() {
             </span>
           </label>
 
-          <button type="submit" disabled={loading} className="btn-primary mt-1 w-full min-h-[2.9rem]">
+          <button type="submit" disabled={loading} className="btn-primary mt-10 w-full min-h-[2.9rem]">
             {loading ? 'Creating account...' : 'Continue'}
           </button>
 
-          <p className="mt-6 text-center text-sm text-text-muted">
+          <p className="mt-8 text-center text-sm text-text-muted">
             <Link to="/login" className="font-semibold text-text-link hover:underline">
               Already have an account?
             </Link>

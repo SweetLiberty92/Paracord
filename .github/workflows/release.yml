@@ -12,6 +12,8 @@ env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: "true"
   LIVEKIT_VERSION: "v1.9.11"
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
 jobs:
   build-server-windows:
@@ -184,6 +186,13 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: Validate updater signing key
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw "TAURI_SIGNING_PRIVATE_KEY secret is required for signed updater artifacts."
+          }
+
       - name: Build Tauri bundles (Windows)
         working-directory: client
         run: npx tauri build
@@ -209,7 +218,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: client-windows-msi
-          path: client/src-tauri/target/release/bundle/msi/*.msi
+          path: |
+            client/src-tauri/target/release/bundle/msi/*.msi
+            client/src-tauri/target/release/bundle/msi/*.msi.sig
 
   build-client-linux:
     name: Build Client (Linux x64)
@@ -251,6 +262,14 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: Validate updater signing key
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY secret is required for signed updater artifacts."
+            exit 1
+          fi
+
       - name: Build Tauri bundles (AppImage + deb)
         working-directory: client
         run: npx tauri build --bundles appimage,deb
@@ -259,13 +278,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: client-linux-appimage
-          path: client/src-tauri/target/release/bundle/appimage/*.AppImage
+          path: |
+            client/src-tauri/target/release/bundle/appimage/*.AppImage
+            client/src-tauri/target/release/bundle/appimage/*.AppImage.sig
 
       - name: Upload client deb
         uses: actions/upload-artifact@v4
         with:
           name: client-linux-deb
-          path: client/src-tauri/target/release/bundle/deb/*.deb
+          path: |
+            client/src-tauri/target/release/bundle/deb/*.deb
+            client/src-tauri/target/release/bundle/deb/*.deb.sig
 
   release:
     name: Create Release
@@ -283,6 +306,66 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f | sort
 
+      - name: Generate updater manifest (latest.json)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          tag="${GITHUB_REF_NAME}"
+          repo="${GITHUB_REPOSITORY}"
+          pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          msi_path="$(find artifacts/client-windows-msi -maxdepth 1 -type f -name '*.msi' | head -n1)"
+          msi_sig_path="${msi_path}.sig"
+          appimage_path="$(find artifacts/client-linux-appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          appimage_sig_path="${appimage_path}.sig"
+          deb_path="$(find artifacts/client-linux-deb -maxdepth 1 -type f -name '*.deb' | head -n1)"
+          deb_sig_path="${deb_path}.sig"
+
+          for required in "$msi_path" "$msi_sig_path" "$appimage_path" "$appimage_sig_path" "$deb_path" "$deb_sig_path"; do
+            if [ ! -f "$required" ]; then
+              echo "Required updater artifact missing: $required"
+              exit 1
+            fi
+          done
+
+          msi_name="$(basename "$msi_path")"
+          appimage_name="$(basename "$appimage_path")"
+          deb_name="$(basename "$deb_path")"
+
+          msi_sig="$(tr -d '\r\n' < "$msi_sig_path")"
+          appimage_sig="$(tr -d '\r\n' < "$appimage_sig_path")"
+          deb_sig="$(tr -d '\r\n' < "$deb_sig_path")"
+
+          msi_url="https://github.com/${repo}/releases/download/${tag}/${msi_name}"
+          appimage_url="https://github.com/${repo}/releases/download/${tag}/${appimage_name}"
+          deb_url="https://github.com/${repo}/releases/download/${tag}/${deb_name}"
+
+          jq -n \
+            --arg version "$version" \
+            --arg notes "Signed desktop update ${version}" \
+            --arg pub_date "$pub_date" \
+            --arg msi_url "$msi_url" \
+            --arg msi_sig "$msi_sig" \
+            --arg appimage_url "$appimage_url" \
+            --arg appimage_sig "$appimage_sig" \
+            --arg deb_url "$deb_url" \
+            --arg deb_sig "$deb_sig" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "windows-x86_64": { url: $msi_url, signature: $msi_sig },
+                "linux-x86_64": { url: $deb_url, signature: $deb_sig },
+                "linux-x86_64-deb": { url: $deb_url, signature: $deb_sig },
+                "linux-x86_64-appimage": { url: $appimage_url, signature: $appimage_sig }
+              }
+            }' > artifacts/latest.json
+
+          cat artifacts/latest.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -299,10 +382,15 @@ jobs:
             | Client MSI (Windows) | `Paracord_*_x64_en-US.msi` |
             | Client AppImage (Linux) | `Paracord_*.AppImage` |
             | Client deb (Linux) | `paracord_*_amd64.deb` |
+            | Signed updater manifest | `latest.json` |
           files: |
             artifacts/server-windows/*.zip
             artifacts/server-linux/*.tar.gz
             artifacts/client-windows-installer/*.exe
             artifacts/client-windows-msi/*.msi
+            artifacts/client-windows-msi/*.msi.sig
             artifacts/client-linux-appimage/*.AppImage
+            artifacts/client-linux-appimage/*.AppImage.sig
             artifacts/client-linux-deb/*.deb
+            artifacts/client-linux-deb/*.deb.sig
+            artifacts/latest.json

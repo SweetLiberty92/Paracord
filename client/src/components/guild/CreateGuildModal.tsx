@@ -118,7 +118,7 @@ export function CreateGuildModal({ onClose }: CreateGuildModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="relative px-4 pb-4 pt-5 text-center sm:px-7 sm:pb-5 sm:pt-7">
+        <div className="relative px-8 pb-5 pt-8 text-center sm:px-8 sm:pb-5 sm:pt-8">
           <button onClick={onClose} className="icon-btn absolute right-3 top-3 sm:right-5 sm:top-5">
             <X size={20} />
           </button>
@@ -155,10 +155,10 @@ export function CreateGuildModal({ onClose }: CreateGuildModalProps) {
         </div>
 
         {/* Body */}
-        <div className="px-4 pb-5 sm:px-7 sm:pb-6">
+        <div className="px-8 pb-8 sm:px-8 sm:pb-8">
           {tab === 'create' ? (
-            <>
-              <div className="mb-5 flex justify-center">
+            <div className="space-y-6">
+              <div className="flex justify-center">
                 <label className="cursor-pointer">
                   <input type="file" accept="image/*" className="hidden" onChange={handleIconChange} />
                   <div
@@ -190,12 +190,12 @@ export function CreateGuildModal({ onClose }: CreateGuildModalProps) {
                   type="text"
                   value={serverName}
                   onChange={(e) => setServerName(e.target.value)}
-                  className="input-field mt-2"
+                  className="input-field mt-3"
                 />
               </label>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="space-y-6">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
                   Invite Link
@@ -205,10 +205,10 @@ export function CreateGuildModal({ onClose }: CreateGuildModalProps) {
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                   placeholder="https://paracord.gg/hTKzmak"
-                  className="input-field mt-2"
+                  className="input-field mt-3"
                 />
               </label>
-              <div className="mt-4 rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-3.5 py-3">
+              <div className="rounded-xl border border-border-subtle bg-bg-mod-subtle/65 px-3.5 py-3">
                 <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
                   Invites should look like
                 </span>
@@ -217,13 +217,13 @@ export function CreateGuildModal({ onClose }: CreateGuildModalProps) {
                   https://paracord.gg/hTKzmak
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
 
         {/* Footer */}
         <div
-          className="flex flex-col-reverse items-stretch gap-2.5 border-t border-border-subtle/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-5"
+          className="flex flex-col-reverse items-stretch gap-5 border-t border-border-subtle/70 px-8 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-6"
           style={{ backgroundColor: 'var(--bg-secondary)' }}
         >
           <button onClick={onClose} className="btn-ghost">Cancel</button>

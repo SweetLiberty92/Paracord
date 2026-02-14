@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { sanitizeCustomCss } from '../lib/security';
@@ -7,36 +7,55 @@ type ThemeName = 'dark' | 'light' | 'amoled';
 
 const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
   dark: {
-    'color-bg-primary': '#10141d',
-    'color-bg-secondary': '#141a26',
-    'color-bg-tertiary': '#0a0f18',
-    'color-bg-accent': '#1d2635',
-    'color-bg-floating': 'rgba(10, 14, 23, 0.9)',
-    'color-bg-mod-subtle': 'rgba(255, 255, 255, 0.05)',
-    'color-bg-mod-strong': 'rgba(255, 255, 255, 0.12)',
-    'color-text-primary': '#f2f6ff',
-    'color-text-secondary': '#b6c2d9',
-    'color-text-muted': '#8190ab',
-    'color-text-link': '#7ecbff',
-    'color-accent-primary': '#6f86ff',
-    'color-accent-primary-hover': '#8a9dff',
+    'color-bg-primary': '#0b1018',
+    'color-bg-secondary': '#0f1420',
+    'color-bg-tertiary': '#060a12',
+    'color-bg-accent': '#151d2c',
+    'color-bg-floating': 'rgba(7, 11, 18, 0.93)',
+    'color-bg-mod-subtle': 'rgba(255, 255, 255, 0.04)',
+    'color-bg-mod-strong': 'rgba(255, 255, 255, 0.1)',
+    'color-text-primary': '#edf3ff',
+    'color-text-secondary': '#aab8d1',
+    'color-text-muted': '#7786a1',
+    'color-text-link': '#7dc3ff',
+    'color-accent-primary': '#6782ff',
+    'color-accent-primary-hover': '#7e97ff',
     'color-accent-success': '#35c18f',
     'color-accent-danger': '#ff5d72',
     'color-accent-warning': '#ffce62',
-    'color-border-subtle': 'rgba(161, 184, 230, 0.16)',
-    'color-border-strong': 'rgba(177, 200, 242, 0.28)',
-    'color-scrollbar-track': 'rgba(9, 13, 20, 0.42)',
-    'color-scrollbar-thumb': 'rgba(129, 160, 219, 0.35)',
-    'color-channel-icon': '#8a97b4',
-    'color-interactive-normal': '#a8b4cc',
-    'color-interactive-hover': '#e4edff',
-    'color-interactive-active': '#f6f8ff',
-    'color-interactive-muted': '#4f5a6f',
+    'color-border-subtle': 'rgba(157, 180, 223, 0.14)',
+    'color-border-strong': 'rgba(176, 200, 244, 0.24)',
+    'color-scrollbar-track': 'rgba(7, 10, 16, 0.46)',
+    'color-scrollbar-thumb': 'rgba(126, 156, 214, 0.34)',
+    'color-channel-icon': '#8897b5',
+    'color-interactive-normal': '#a4b2cb',
+    'color-interactive-hover': '#e3ecff',
+    'color-interactive-active': '#f3f7ff',
+    'color-interactive-muted': '#4b586f',
     'color-status-online': '#35c18f',
     'color-status-idle': '#ffce62',
     'color-status-dnd': '#ff5d72',
     'color-status-offline': '#6e7991',
     'color-status-streaming': '#8b6fff',
+    'app-bg-layer-one': 'radial-gradient(130% 90% at 0% 0%, rgba(103, 130, 255, 0.1) 0%, rgba(103, 130, 255, 0) 52%)',
+    'app-bg-layer-two': 'radial-gradient(120% 90% at 100% 0%, rgba(53, 193, 143, 0.07) 0%, rgba(53, 193, 143, 0) 44%)',
+    'app-bg-base': 'linear-gradient(180deg, #05080f 0%, #04070d 100%)',
+    'overlay-backdrop': 'rgba(1, 4, 10, 0.72)',
+    'glass-rail-fill-top': 'rgba(255, 255, 255, 0.04)',
+    'glass-rail-fill-bottom': 'rgba(255, 255, 255, 0.012)',
+    'glass-panel-fill-top': 'rgba(255, 255, 255, 0.036)',
+    'glass-panel-fill-bottom': 'rgba(255, 255, 255, 0.01)',
+    'glass-modal-fill-top': 'rgba(11, 16, 26, 0.95)',
+    'glass-modal-fill-bottom': 'rgba(7, 11, 18, 0.94)',
+    'panel-divider-glint': 'rgba(255, 255, 255, 0.02)',
+    'scrollbar-auto-thumb-hover': 'rgba(126, 156, 214, 0.5)',
+    'sidebar-bg': 'rgba(6, 10, 16, 0.76)',
+    'sidebar-border': 'rgba(255, 255, 255, 0.07)',
+    'sidebar-active-indicator': 'var(--color-accent-primary)',
+    'ambient-glow-primary': 'rgba(103, 130, 255, 0.15)',
+    'ambient-glow-success': 'rgba(53, 193, 143, 0.09)',
+    'ambient-glow-danger': 'rgba(255, 93, 114, 0.06)',
+    'accent-primary-rgb': '103, 130, 255',
   },
   light: {
     'color-bg-primary': '#f4f7ff',
@@ -69,38 +88,76 @@ const THEME_VARIABLES: Record<ThemeName, Record<string, string>> = {
     'color-status-dnd': '#d73b61',
     'color-status-offline': '#8d9ab4',
     'color-status-streaming': '#6a4dce',
+    'app-bg-layer-one': 'radial-gradient(120% 90% at 0% 0%, rgba(80, 103, 241, 0.2) 0%, rgba(80, 103, 241, 0) 54%)',
+    'app-bg-layer-two': 'radial-gradient(115% 90% at 100% 0%, rgba(31, 159, 114, 0.15) 0%, rgba(31, 159, 114, 0) 48%)',
+    'app-bg-base': 'linear-gradient(180deg, #edf2fb 0%, #e3eaf7 100%)',
+    'overlay-backdrop': 'rgba(18, 26, 40, 0.4)',
+    'glass-rail-fill-top': 'rgba(255, 255, 255, 0.78)',
+    'glass-rail-fill-bottom': 'rgba(223, 232, 248, 0.64)',
+    'glass-panel-fill-top': 'rgba(255, 255, 255, 0.72)',
+    'glass-panel-fill-bottom': 'rgba(227, 236, 248, 0.58)',
+    'glass-modal-fill-top': 'rgba(253, 255, 255, 0.94)',
+    'glass-modal-fill-bottom': 'rgba(236, 243, 252, 0.94)',
+    'panel-divider-glint': 'rgba(20, 44, 82, 0.08)',
+    'scrollbar-auto-thumb-hover': 'rgba(88, 110, 150, 0.45)',
+    'sidebar-bg': 'rgba(248, 251, 255, 0.74)',
+    'sidebar-border': 'rgba(36, 58, 92, 0.14)',
+    'sidebar-active-indicator': 'var(--color-accent-primary)',
+    'ambient-glow-primary': 'rgba(80, 103, 241, 0.19)',
+    'ambient-glow-success': 'rgba(31, 159, 114, 0.14)',
+    'ambient-glow-danger': 'rgba(215, 59, 97, 0.08)',
+    'accent-primary-rgb': '71, 111, 255',
   },
   amoled: {
-    'color-bg-primary': '#05070d',
-    'color-bg-secondary': '#090d17',
+    'color-bg-primary': '#000000',
+    'color-bg-secondary': '#000000',
     'color-bg-tertiary': '#000000',
-    'color-bg-accent': '#121a2a',
-    'color-bg-floating': 'rgba(0, 0, 0, 0.94)',
-    'color-bg-mod-subtle': 'rgba(255, 255, 255, 0.07)',
-    'color-bg-mod-strong': 'rgba(255, 255, 255, 0.14)',
+    'color-bg-accent': '#080a0f',
+    'color-bg-floating': 'rgba(0, 0, 0, 0.98)',
+    'color-bg-mod-subtle': 'rgba(255, 255, 255, 0.055)',
+    'color-bg-mod-strong': 'rgba(255, 255, 255, 0.12)',
     'color-text-primary': '#f5f8ff',
-    'color-text-secondary': '#b4bfd5',
-    'color-text-muted': '#7987a2',
-    'color-text-link': '#80b4ff',
-    'color-accent-primary': '#7b8fff',
-    'color-accent-primary-hover': '#92a4ff',
+    'color-text-secondary': '#aebad2',
+    'color-text-muted': '#6f7d96',
+    'color-text-link': '#8dc2ff',
+    'color-accent-primary': '#748dff',
+    'color-accent-primary-hover': '#8da3ff',
     'color-accent-success': '#3bcf98',
     'color-accent-danger': '#ff5f7f',
     'color-accent-warning': '#ffd271',
-    'color-border-subtle': 'rgba(160, 183, 227, 0.17)',
-    'color-border-strong': 'rgba(187, 210, 255, 0.3)',
-    'color-scrollbar-track': 'rgba(2, 6, 12, 0.62)',
-    'color-scrollbar-thumb': 'rgba(132, 162, 220, 0.34)',
+    'color-border-subtle': 'rgba(255, 255, 255, 0.12)',
+    'color-border-strong': 'rgba(255, 255, 255, 0.22)',
+    'color-scrollbar-track': 'rgba(255, 255, 255, 0.06)',
+    'color-scrollbar-thumb': 'rgba(255, 255, 255, 0.26)',
     'color-channel-icon': '#8d9ab6',
-    'color-interactive-normal': '#acb8cf',
-    'color-interactive-hover': '#ebf1ff',
+    'color-interactive-normal': '#a9b5cd',
+    'color-interactive-hover': '#edf2ff',
     'color-interactive-active': '#ffffff',
-    'color-interactive-muted': '#4b576f',
+    'color-interactive-muted': '#4d5871',
     'color-status-online': '#3bcf98',
     'color-status-idle': '#ffd271',
     'color-status-dnd': '#ff5f7f',
     'color-status-offline': '#72819d',
     'color-status-streaming': '#8f70ff',
+    'app-bg-layer-one': 'none',
+    'app-bg-layer-two': 'none',
+    'app-bg-base': '#000000',
+    'overlay-backdrop': 'rgba(0, 0, 0, 0.86)',
+    'glass-rail-fill-top': 'rgba(0, 0, 0, 0.9)',
+    'glass-rail-fill-bottom': 'rgba(0, 0, 0, 0.9)',
+    'glass-panel-fill-top': 'rgba(0, 0, 0, 0.86)',
+    'glass-panel-fill-bottom': 'rgba(0, 0, 0, 0.86)',
+    'glass-modal-fill-top': 'rgba(0, 0, 0, 0.94)',
+    'glass-modal-fill-bottom': 'rgba(0, 0, 0, 0.94)',
+    'panel-divider-glint': 'rgba(255, 255, 255, 0.02)',
+    'scrollbar-auto-thumb-hover': 'rgba(255, 255, 255, 0.36)',
+    'sidebar-bg': 'rgba(0, 0, 0, 0.94)',
+    'sidebar-border': 'rgba(255, 255, 255, 0.12)',
+    'sidebar-active-indicator': 'var(--color-accent-primary)',
+    'ambient-glow-primary': 'transparent',
+    'ambient-glow-success': 'transparent',
+    'ambient-glow-danger': 'transparent',
+    'accent-primary-rgb': '116, 141, 255',
   },
 };
 
@@ -141,12 +198,27 @@ const LEGACY_ALIASES: Record<string, string> = {
 
 export function useTheme() {
   const theme = useUIStore((s) => s.theme);
+  const setTheme = useUIStore((s) => s.setTheme);
   const compactMode = useUIStore((s) => s.compactMode);
   const customCss = useUIStore((s) => s.customCss);
   const settings = useAuthStore((s) => s.settings);
+  const initializedFromServer = useRef(false);
 
-  // Sync server-side theme preference when available
-  const requestedTheme = settings?.theme || theme;
+  // Hydrate local theme once from server settings so user changes apply immediately.
+  useEffect(() => {
+    if (!settings) {
+      initializedFromServer.current = false;
+      return;
+    }
+    if (!initializedFromServer.current) {
+      if (settings.theme === 'dark' || settings.theme === 'light' || settings.theme === 'amoled') {
+        setTheme(settings.theme);
+      }
+      initializedFromServer.current = true;
+    }
+  }, [settings, setTheme]);
+
+  const requestedTheme = theme;
   const activeTheme: ThemeName =
     requestedTheme === 'light' || requestedTheme === 'amoled' || requestedTheme === 'dark'
       ? requestedTheme

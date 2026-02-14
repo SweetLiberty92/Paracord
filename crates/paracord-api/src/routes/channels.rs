@@ -18,12 +18,14 @@ pub struct CreateChannelRequest {
     #[serde(default)]
     pub channel_type: i16,
     pub parent_id: Option<i64>,
+    pub required_role_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateChannelRequest {
     pub name: Option<String>,
     pub topic: Option<String>,
+    pub required_role_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -69,6 +71,13 @@ pub struct UpsertChannelOverwriteRequest {
 }
 
 fn channel_to_json(c: &paracord_db::channels::ChannelRow) -> Value {
+    let required_role_ids: Vec<String> = paracord_db::channels::parse_required_role_ids(
+        &c.required_role_ids,
+    )
+    .into_iter()
+    .map(|id| id.to_string())
+    .collect();
+
     json!({
         "id": c.id.to_string(),
         "guild_id": c.guild_id().map(|id| id.to_string()),
@@ -81,7 +90,61 @@ fn channel_to_json(c: &paracord_db::channels::ChannelRow) -> Value {
         "nsfw": c.nsfw,
         "rate_limit_per_user": c.rate_limit_per_user,
         "last_message_id": c.last_message_id.map(|id| id.to_string()),
+        "required_role_ids": required_role_ids,
     })
+}
+
+fn parse_role_id_strings(raw_role_ids: &[String]) -> Result<Vec<i64>, ApiError> {
+    raw_role_ids
+        .iter()
+        .map(|raw| {
+            raw.parse::<i64>()
+                .map_err(|_| ApiError::BadRequest("Invalid role id".into()))
+        })
+        .collect()
+}
+
+async fn normalize_required_role_ids(
+    state: &AppState,
+    guild_id: i64,
+    actor_id: i64,
+    raw_role_ids: &[String],
+) -> Result<String, ApiError> {
+    let guild = paracord_db::guilds::get_guild(&state.db, guild_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+        .ok_or(ApiError::NotFound)?;
+    let actor_roles = paracord_db::roles::get_member_roles(&state.db, actor_id, guild_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let actor_perms = paracord_core::permissions::compute_permissions_from_roles(
+        &actor_roles,
+        guild.owner_id,
+        actor_id,
+    );
+    if !paracord_core::permissions::is_server_admin(actor_perms) {
+        return Err(ApiError::Forbidden);
+    }
+
+    let mut parsed_role_ids = parse_role_id_strings(raw_role_ids)?;
+    parsed_role_ids.retain(|role_id| *role_id != guild_id);
+    if parsed_role_ids.is_empty() {
+        return Ok("[]".to_string());
+    }
+
+    let guild_roles = paracord_db::roles::get_guild_roles(&state.db, guild_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let guild_role_ids: std::collections::HashSet<i64> = guild_roles.iter().map(|r| r.id).collect();
+    if parsed_role_ids.iter().any(|role_id| !guild_role_ids.contains(role_id)) {
+        return Err(ApiError::BadRequest(
+            "One or more required roles do not belong to this guild".into(),
+        ));
+    }
+
+    Ok(paracord_db::channels::serialize_required_role_ids(
+        &parsed_role_ids,
+    ))
 }
 
 async fn ensure_channel_permissions(
@@ -208,6 +271,12 @@ pub async fn create_channel(
     Json(body): Json<CreateChannelRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let channel_id = paracord_util::snowflake::generate(1);
+    let required_role_ids = match body.required_role_ids.as_deref() {
+        Some(raw_role_ids) => {
+            Some(normalize_required_role_ids(&state, guild_id, auth.user_id, raw_role_ids).await?)
+        }
+        None => None,
+    };
 
     let channel = paracord_core::channel::create_channel(
         &state.db,
@@ -217,6 +286,7 @@ pub async fn create_channel(
         &body.name,
         body.channel_type,
         body.parent_id,
+        required_role_ids.as_deref(),
     )
     .await?;
 
@@ -260,12 +330,25 @@ pub async fn update_channel(
     Path(channel_id): Path<i64>,
     Json(body): Json<UpdateChannelRequest>,
 ) -> Result<Json<Value>, ApiError> {
+    let guild_id = paracord_db::channels::get_channel(&state.db, channel_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+        .and_then(|c| c.guild_id())
+        .ok_or(ApiError::NotFound)?;
+    let required_role_ids = match body.required_role_ids.as_deref() {
+        Some(raw_role_ids) => {
+            Some(normalize_required_role_ids(&state, guild_id, auth.user_id, raw_role_ids).await?)
+        }
+        None => None,
+    };
+
     let updated = paracord_core::channel::update_channel(
         &state.db,
         channel_id,
         auth.user_id,
         body.name.as_deref(),
         body.topic.as_deref(),
+        required_role_ids.as_deref(),
     )
     .await?;
 

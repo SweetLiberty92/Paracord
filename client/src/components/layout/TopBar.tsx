@@ -147,9 +147,14 @@ export function TopBar({ channelName, channelTopic, isVoice, isDM, recipientName
       void refreshReadStates();
     }, 30000);
 
+    // Immediately refresh when a channel is marked as read
+    const onReadStateUpdated = () => void refreshReadStates();
+    window.addEventListener('paracord:read-state-updated', onReadStateUpdated);
+
     return () => {
       disposed = true;
       window.clearInterval(intervalId);
+      window.removeEventListener('paracord:read-state-updated', onReadStateUpdated);
     };
   }, []);
 
@@ -238,7 +243,7 @@ export function TopBar({ channelName, channelTopic, isVoice, isDM, recipientName
   );
 
   return (
-    <div className="z-10 flex h-[var(--spacing-header-height)] w-full shrink-0 items-center justify-between border-b border-border-subtle/50 bg-gradient-to-r from-transparent to-transparent px-2 sm:px-3 md:px-5">
+    <div className="z-10 flex h-[var(--spacing-header-height)] w-full shrink-0 items-center justify-between border-b border-border-subtle/50 bg-gradient-to-r from-transparent to-transparent px-4 sm:px-4 md:px-5">
       {/* Left: channel info */}
       <div className="mr-2 flex min-w-0 flex-1 items-center overflow-hidden sm:mr-3">
         {isMobile && (
@@ -284,7 +289,7 @@ export function TopBar({ channelName, channelTopic, isVoice, isDM, recipientName
       </div>
 
       {/* Right: action buttons */}
-      <div className="scrollbar-thin flex shrink-0 items-center gap-0.5 overflow-x-auto sm:gap-1">
+      <div className="flex shrink-0 items-center gap-2">
         <TopBarIcon
           icon={Search}
           onClick={() => setShowSearch(true)}

@@ -88,7 +88,7 @@ export function InviteModal({ guildName, channelId, onClose }: InviteModalProps)
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="relative px-4 pb-3 pt-5 sm:px-7 sm:pt-7">
+        <div className="relative px-8 pb-5 pt-8 sm:px-8 sm:pt-8">
           <button onClick={onClose} className="icon-btn absolute right-3 top-3 sm:right-5 sm:top-5">
             <X size={20} />
           </button>
@@ -98,18 +98,18 @@ export function InviteModal({ guildName, channelId, onClose }: InviteModalProps)
         </div>
 
         {/* Body */}
-        <div className="px-4 pb-5 sm:px-7 sm:pb-7">
+        <div className="space-y-7 px-8 pb-8 sm:px-8 sm:pb-8">
           {/* Portable invite link (primary) */}
-          <div className="mt-3">
-            <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          <div>
+            <label className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
               <Link size={12} />
               Portable invite link
             </label>
-            <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            <p className="mt-3 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
               Share this link with anyone -- it works from any device, even on a different network.
             </p>
             <div
-              className="mt-2.5 flex items-center overflow-hidden rounded-xl"
+              className="mt-3 flex items-center overflow-hidden rounded-xl"
               style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}
             >
               <input
@@ -135,12 +135,12 @@ export function InviteModal({ guildName, channelId, onClose }: InviteModalProps)
           </div>
 
           {/* Raw invite code (secondary) */}
-          <div className="mt-4">
-            <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          <div>
+            <label className="mb-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
               Invite code
             </label>
             <div
-              className="mt-2 flex items-center overflow-hidden rounded-xl"
+              className="mt-3 flex items-center overflow-hidden rounded-xl"
               style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}
             >
               <input
@@ -166,7 +166,7 @@ export function InviteModal({ guildName, channelId, onClose }: InviteModalProps)
           </div>
 
           {/* Settings */}
-          <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <label className="flex-1">
               <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
                 Expire After
@@ -174,7 +174,7 @@ export function InviteModal({ guildName, channelId, onClose }: InviteModalProps)
               <select
                 value={expiration}
                 onChange={(e) => setExpiration(e.target.value)}
-                className="select-field mt-2"
+                className="select-field mt-3"
               >
                 <option value="30min">30 minutes</option>
                 <option value="1hr">1 hour</option>
@@ -192,7 +192,7 @@ export function InviteModal({ guildName, channelId, onClose }: InviteModalProps)
               <select
                 value={maxUses}
                 onChange={(e) => setMaxUses(e.target.value)}
-                className="select-field mt-2"
+                className="select-field mt-3"
               >
                 <option value="1">1 use</option>
                 <option value="5">5 uses</option>

@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use paracord_core::AppState;
+use paracord_models::permissions::Permissions;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -246,29 +247,49 @@ pub async fn get_channels(
     Path(guild_id): Path<i64>,
 ) -> Result<Json<Value>, ApiError> {
     paracord_core::permissions::ensure_guild_member(&state.db, guild_id, auth.user_id).await?;
+    let guild = paracord_db::guilds::get_guild(&state.db, guild_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+        .ok_or(ApiError::NotFound)?;
 
     let channels = paracord_db::channels::get_guild_channels(&state.db, guild_id)
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
 
-    let result: Vec<Value> = channels
-        .iter()
-        .map(|c| {
-            json!({
-                "id": c.id.to_string(),
-                "guild_id": c.guild_id().map(|id| id.to_string()),
-                "name": c.name,
-                "topic": c.topic,
-                "type": c.channel_type,
-                "channel_type": c.channel_type,
-                "position": c.position,
-                "parent_id": c.parent_id.map(|id| id.to_string()),
-                "nsfw": c.nsfw,
-                "rate_limit_per_user": c.rate_limit_per_user,
-                "last_message_id": c.last_message_id.map(|id| id.to_string()),
-            })
-        })
+    let mut result: Vec<Value> = Vec::with_capacity(channels.len());
+    for c in channels {
+        let perms = paracord_core::permissions::compute_channel_permissions(
+            &state.db,
+            guild_id,
+            c.id,
+            guild.owner_id,
+            auth.user_id,
+        )
+        .await?;
+        if !perms.contains(Permissions::VIEW_CHANNEL) {
+            continue;
+        }
+        let required_role_ids: Vec<String> = paracord_db::channels::parse_required_role_ids(
+            &c.required_role_ids,
+        )
+        .into_iter()
+        .map(|id| id.to_string())
         .collect();
+        result.push(json!({
+            "id": c.id.to_string(),
+            "guild_id": c.guild_id().map(|id| id.to_string()),
+            "name": c.name,
+            "topic": c.topic,
+            "type": c.channel_type,
+            "channel_type": c.channel_type,
+            "position": c.position,
+            "parent_id": c.parent_id.map(|id| id.to_string()),
+            "nsfw": c.nsfw,
+            "rate_limit_per_user": c.rate_limit_per_user,
+            "last_message_id": c.last_message_id.map(|id| id.to_string()),
+            "required_role_ids": required_role_ids,
+        }));
+    }
 
     Ok(Json(json!(result)))
 }

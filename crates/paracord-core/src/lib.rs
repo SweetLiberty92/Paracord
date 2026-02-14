@@ -8,7 +8,7 @@ pub mod message;
 pub mod user;
 pub mod admin;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
 use paracord_db::DbPool;
@@ -54,6 +54,8 @@ pub struct AppState {
     pub shutdown: Arc<Notify>,
     /// Set of user IDs currently connected to the gateway (online).
     pub online_users: Arc<RwLock<HashSet<i64>>>,
+    /// Live presence payloads keyed by user ID.
+    pub user_presences: Arc<RwLock<HashMap<i64, serde_json::Value>>>,
 }
 
 #[derive(Clone, Debug)]

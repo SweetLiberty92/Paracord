@@ -15,7 +15,7 @@ export function AdminPage() {
     <div className="flex h-full">
       {/* Sidebar nav */}
       <div className="flex w-60 min-w-[15rem] flex-col border-r border-border-subtle bg-bg-secondary/50">
-        <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-4">
+        <div className="flex items-center gap-4 border-b border-border-subtle px-4 py-4">
           <button
             onClick={() => navigate(-1)}
             className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-mod-subtle hover:text-text-primary"
@@ -25,7 +25,7 @@ export function AdminPage() {
           <h1 className="text-lg font-semibold text-text-primary">Admin Dashboard</h1>
         </div>
 
-        <nav className="flex flex-col gap-1 p-3">
+        <nav className="flex flex-col gap-3 p-6">
           {([
             { id: 'overview' as Tab, label: 'Overview', icon: BarChart3 },
             { id: 'users' as Tab, label: 'Users', icon: Users },
@@ -35,7 +35,7 @@ export function AdminPage() {
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex items-center gap-4 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 activeTab === id
                   ? 'bg-accent-primary/15 text-accent-primary'
                   : 'text-text-secondary hover:bg-bg-mod-subtle hover:text-text-primary'
@@ -49,7 +49,7 @@ export function AdminPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-8 lg:p-10">
         {activeTab === 'overview' && <OverviewPanel />}
         {activeTab === 'users' && <UsersPanel />}
         {activeTab === 'guilds' && <GuildsPanel />}
@@ -87,11 +87,11 @@ function OverviewPanel() {
   return (
     <div>
       <h2 className="mb-6 text-xl font-semibold text-text-primary">Server Overview</h2>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-10 grid grid-cols-2 gap-7 lg:grid-cols-4">
         {cards.map(({ label, value, icon: Icon }) => (
           <div
             key={label}
-            className="rounded-xl border border-border-subtle bg-bg-secondary/60 p-5"
+            className="card-surface rounded-xl border border-border-subtle bg-bg-secondary/60 px-6 py-6"
           >
             <div className="mb-2 flex items-center gap-2 text-text-secondary">
               <Icon size={16} />
@@ -120,6 +120,7 @@ function UsersPanel() {
   }>>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [search, setSearch] = useState('');
   const limit = 25;
 
   const fetchUsers = () => {
@@ -155,32 +156,52 @@ function UsersPanel() {
     }
   };
 
+  const filteredUsers = search.trim()
+    ? users.filter(
+        (u) =>
+          u.username.toLowerCase().includes(search.toLowerCase()) ||
+          u.email.toLowerCase().includes(search.toLowerCase()) ||
+          (u.display_name && u.display_name.toLowerCase().includes(search.toLowerCase()))
+      )
+    : users;
+
   return (
     <div>
       <h2 className="mb-6 text-xl font-semibold text-text-primary">
         Users <span className="text-sm font-normal text-text-muted">({total})</span>
       </h2>
 
+      {/* Search / filter */}
+      <div className="mb-6">
+        <input
+          type="text"
+          placeholder="Search users by name or email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-14 w-full max-w-sm rounded-lg border border-border-subtle bg-bg-secondary px-6 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent-primary"
+        />
+      </div>
+
       <div className="overflow-hidden rounded-xl border border-border-subtle">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-border-subtle bg-bg-secondary/60">
-              <th className="px-4 py-3 font-medium text-text-secondary">Username</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Email</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Role</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Joined</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Actions</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Username</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Email</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Role</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Joined</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b border-border-subtle/50 transition-colors hover:bg-bg-mod-subtle/30">
-                <td className="px-4 py-3 text-text-primary">
+            {filteredUsers.map((u) => (
+              <tr key={u.id} className="border-b border-border-subtle/50 last:border-b-0 transition-colors hover:bg-bg-mod-subtle/30">
+                <td className="px-6 py-5 text-text-primary">
                   <span className="font-medium">{u.display_name || u.username}</span>
                   <span className="ml-1 text-text-muted">#{u.discriminator}</span>
                 </td>
-                <td className="px-4 py-3 text-text-secondary">{u.email}</td>
-                <td className="px-4 py-3">
+                <td className="px-6 py-5 text-text-secondary">{u.email}</td>
+                <td className="px-6 py-5">
                   {isAdmin(u.flags) ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-accent-primary/15 px-2.5 py-0.5 text-xs font-medium text-accent-primary">
                       <Shield size={12} /> Admin
@@ -189,11 +210,11 @@ function UsersPanel() {
                     <span className="text-text-muted">Member</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-text-secondary">
+                <td className="px-6 py-5 text-text-secondary">
                   {new Date(u.created_at).toLocaleDateString()}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
+                <td className="px-6 py-5">
+                  <div className="flex items-center gap-4">
                     {u.id !== currentUser?.id && (
                       <>
                         <button
@@ -213,12 +234,19 @@ function UsersPanel() {
                       </>
                     )}
                     {u.id === currentUser?.id && (
-                      <span className="text-xs text-text-muted">You</span>
+                      <span className="text-xs text-text-muted italic">You</span>
                     )}
                   </div>
                 </td>
               </tr>
             ))}
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-6 py-10 text-center text-text-muted">
+                  {search.trim() ? 'No users match your search' : 'No users found'}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -328,24 +356,24 @@ function GuildsPanel() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-border-subtle bg-bg-secondary/60">
-              <th className="px-4 py-3 font-medium text-text-secondary">Name</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Description</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Created</th>
-              <th className="px-4 py-3 font-medium text-text-secondary">Actions</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Name</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Description</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Created</th>
+              <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">Actions</th>
             </tr>
           </thead>
           <tbody>
             {guilds.map((g) => (
-              <tr key={g.id} className="border-b border-border-subtle/50 transition-colors hover:bg-bg-mod-subtle/30">
-                <td className="px-4 py-3 font-medium text-text-primary">{g.name}</td>
-                <td className="max-w-xs truncate px-4 py-3 text-text-secondary">
+              <tr key={g.id} className="border-b border-border-subtle/50 last:border-b-0 transition-colors hover:bg-bg-mod-subtle/30">
+                <td className="px-6 py-5 font-medium text-text-primary">{g.name}</td>
+                <td className="max-w-xs truncate px-6 py-5 text-text-secondary">
                   {g.description || '—'}
                 </td>
-                <td className="px-4 py-3 text-text-secondary">
+                <td className="px-6 py-5 text-text-secondary">
                   {new Date(g.created_at).toLocaleDateString()}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
+                <td className="px-6 py-5">
+                  <div className="flex items-center gap-4">
                     <button
                       onClick={() => openEdit(g)}
                       className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-mod-subtle hover:text-text-primary"
@@ -366,7 +394,7 @@ function GuildsPanel() {
             ))}
             {guilds.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-text-muted">
+                <td colSpan={4} className="px-6 py-10 text-center text-text-muted">
                   No guilds yet
                 </td>
               </tr>
@@ -378,31 +406,31 @@ function GuildsPanel() {
       {editingGuild && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeEdit}>
           <div
-            className="w-full max-w-md rounded-xl border border-border-subtle bg-bg-primary p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl border border-border-subtle bg-bg-primary p-8 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-4 text-lg font-semibold text-text-primary">Edit guild</h3>
-            <div className="space-y-4">
+            <h3 className="mb-6 text-lg font-semibold text-text-primary">Edit Guild</h3>
+            <div className="space-y-6">
               <div>
-                <label className="mb-1 block text-sm font-medium text-text-secondary">Name</label>
+                <label className="mb-3 block text-sm font-medium text-text-secondary">Name</label>
                 <input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-4 py-2.5 text-text-primary outline-none transition-colors focus:border-accent-primary"
+                  className="h-14 w-full rounded-lg border border-border-subtle bg-bg-secondary px-6 py-3 text-text-primary outline-none transition-colors focus:border-accent-primary"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-text-secondary">Description</label>
+                <label className="mb-3 block text-sm font-medium text-text-secondary">Description</label>
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-4 py-2.5 text-text-primary outline-none transition-colors focus:border-accent-primary"
+                  className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-6 py-3 text-text-primary outline-none transition-colors focus:border-accent-primary"
                 />
               </div>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-8 flex justify-end gap-4">
               <button
                 onClick={closeEdit}
                 className="rounded-lg border border-border-subtle px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-mod-subtle"
@@ -458,35 +486,35 @@ function SettingsPanel() {
     <div>
       <h2 className="mb-6 text-xl font-semibold text-text-primary">Server Settings</h2>
 
-      <div className="max-w-xl space-y-6">
+      <div className="max-w-xl space-y-8">
         {/* Server Name */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-text-secondary">
+          <label className="mb-3 block text-sm font-medium text-text-secondary">
             Server Name
           </label>
           <input
             type="text"
             value={settings.server_name || ''}
             onChange={(e) => update('server_name', e.target.value)}
-            className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-4 py-2.5 text-text-primary outline-none transition-colors focus:border-accent-primary"
+            className="h-14 w-full rounded-lg border border-border-subtle bg-bg-secondary px-6 py-3 text-text-primary outline-none transition-colors focus:border-accent-primary"
           />
         </div>
 
         {/* Server Description */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-text-secondary">
+          <label className="mb-3 block text-sm font-medium text-text-secondary">
             Server Description
           </label>
           <textarea
             value={settings.server_description || ''}
             onChange={(e) => update('server_description', e.target.value)}
             rows={3}
-            className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-4 py-2.5 text-text-primary outline-none transition-colors focus:border-accent-primary"
+            className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-6 py-3 text-text-primary outline-none transition-colors focus:border-accent-primary"
           />
         </div>
 
         {/* Registration Toggle */}
-        <div className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-secondary/60 px-4 py-4">
+        <div className="card-surface flex items-center justify-between rounded-lg border border-border-subtle bg-bg-secondary/60 px-6 py-6">
           <div>
             <p className="font-medium text-text-primary">Open Registration</p>
             <p className="text-sm text-text-muted">Allow new users to register accounts</p>
@@ -511,42 +539,50 @@ function SettingsPanel() {
 
         {/* Max guilds per user */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-text-secondary">
+          <label className="mb-3 block text-sm font-medium text-text-secondary">
             Max Guilds Per User
           </label>
           <input
             type="number"
             value={settings.max_guilds_per_user || '100'}
             onChange={(e) => update('max_guilds_per_user', e.target.value)}
-            className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-4 py-2.5 text-text-primary outline-none transition-colors focus:border-accent-primary"
+            className="h-14 w-full rounded-lg border border-border-subtle bg-bg-secondary px-6 py-3 text-text-primary outline-none transition-colors focus:border-accent-primary"
           />
         </div>
 
         {/* Max members per guild */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-text-secondary">
+          <label className="mb-3 block text-sm font-medium text-text-secondary">
             Max Members Per Guild
           </label>
           <input
             type="number"
             value={settings.max_members_per_guild || '1000'}
             onChange={(e) => update('max_members_per_guild', e.target.value)}
-            className="w-full rounded-lg border border-border-subtle bg-bg-secondary px-4 py-2.5 text-text-primary outline-none transition-colors focus:border-accent-primary"
+            className="h-14 w-full rounded-lg border border-border-subtle bg-bg-secondary px-6 py-3 text-text-primary outline-none transition-colors focus:border-accent-primary"
           />
         </div>
 
         {/* Save button */}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`rounded-lg px-6 py-2.5 text-sm font-medium text-white transition-colors ${
-            saved
-              ? 'bg-accent-success'
-              : 'bg-accent-primary hover:bg-accent-primary/80'
-          } disabled:opacity-50`}
-        >
-          {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}
-        </button>
+        <div className="settings-action-row">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary"
+            style={
+              saved
+                ? {
+                    backgroundColor: 'var(--accent-success)',
+                    borderColor: 'color-mix(in srgb, var(--accent-success) 72%, white 28%)',
+                    boxShadow:
+                      '0 10px 24px color-mix(in srgb, var(--accent-success) 40%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent-success) 62%, white 38%) inset',
+                  }
+                : undefined
+            }
+          >
+            {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}
+          </button>
+        </div>
       </div>
     </div>
   );

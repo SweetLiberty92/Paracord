@@ -116,9 +116,9 @@ export function AccountSetupPage() {
             Never share your recovery phrase. Anyone with these words can access your account.
           </div>
 
-          <div className="mb-6 grid grid-cols-4 gap-2 rounded-xl border border-border-subtle bg-bg-mod-subtle/65 p-4">
+          <div className="mb-6 grid grid-cols-4 gap-3 rounded-xl border border-border-subtle bg-bg-mod-subtle/65 p-4">
             {words.map((word, i) => (
-              <div key={i} className="flex items-center gap-1.5 rounded-lg bg-bg-secondary/60 px-2 py-1.5">
+              <div key={i} className="card-surface flex items-center gap-1.5 rounded-lg border border-border-subtle/45 bg-bg-secondary/60 px-2 py-1.5">
                 <span className="text-xs font-bold text-text-muted">{i + 1}.</span>
                 <span className="text-sm font-medium text-text-primary">{word}</span>
               </div>

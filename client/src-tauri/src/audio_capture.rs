@@ -64,8 +64,8 @@ mod win_process_loopback {
     use std::sync::{Arc, Mutex};
     use windows::Win32::Foundation::*;
     use windows::Win32::Media::Audio::*;
-    use windows::Win32::System::Com::BLOB;
     use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+    use windows::Win32::System::Com::BLOB;
     use windows::Win32::System::Threading::*;
     use windows::Win32::System::Variant::VT_BLOB;
     use windows_core::{implement, Interface};
@@ -122,8 +122,7 @@ mod win_process_loopback {
                 Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
                     ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
                         TargetProcessId: exclude_pid,
-                        ProcessLoopbackMode:
-                            PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE,
+                        ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE,
                     },
                 },
             };
@@ -294,13 +293,9 @@ fn capture_loop_with_client(
                         });
                     } else {
                         let data_bytes = frames_read as usize * block_align;
-                        let raw_data =
-                            std::slice::from_raw_parts(data_ptr, data_bytes);
-                        let stereo = interleaved_to_stereo_f32(
-                            raw_data,
-                            num_channels,
-                            bytes_per_sample,
-                        );
+                        let raw_data = std::slice::from_raw_parts(data_ptr, data_bytes);
+                        let stereo =
+                            interleaved_to_stereo_f32(raw_data, num_channels, bytes_per_sample);
                         if !stereo.is_empty() {
                             let _ = channel.send(AudioChunk {
                                 samples: stereo,
@@ -387,7 +382,8 @@ fn capture_loop_legacy(
         }
 
         let data_bytes = frames_read as usize * block_align;
-        let stereo = interleaved_to_stereo_f32(&buffer[..data_bytes], num_channels, bytes_per_sample);
+        let stereo =
+            interleaved_to_stereo_f32(&buffer[..data_bytes], num_channels, bytes_per_sample);
         if !stereo.is_empty() {
             let _ = channel.send(AudioChunk {
                 samples: stereo,
@@ -429,15 +425,16 @@ fn capture_loop(
     // @DEFAULT_MONITOR@ captures the default output sink's monitor source,
     // which provides system audio loopback.
     let pulse = Simple::new(
-        None,                    // default server
-        "Paracord",              // app name
-        Direction::Record,       // recording
+        None,                      // default server
+        "Paracord",                // app name
+        Direction::Record,         // recording
         Some("@DEFAULT_MONITOR@"), // monitor source for loopback
-        "System Audio Capture",  // stream description
+        "System Audio Capture",    // stream description
         &spec,
-        None,                    // default channel map
-        None,                    // default buffering attributes
-    ).map_err(|e| format!("Failed to connect to PulseAudio: {e}"))?;
+        None, // default channel map
+        None, // default buffering attributes
+    )
+    .map_err(|e| format!("Failed to connect to PulseAudio: {e}"))?;
 
     // Read buffer: 20ms of stereo f32 audio at 48kHz = 960 frames * 2 ch * 4 bytes = 7680 bytes
     let frames_per_chunk: usize = 960;
@@ -480,9 +477,11 @@ fn capture_loop(
     _channel: &Channel<AudioChunk>,
     _stop_flag: &Arc<AtomicBool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    Err("Native system audio capture is not yet supported on macOS. \
+    Err(
+        "Native system audio capture is not yet supported on macOS. \
          Audio from screen shares will still work via browser APIs."
-        .into())
+            .into(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -531,7 +530,11 @@ fn decode_sample(data: &[u8], offset: usize, bytes_per_sample: usize) -> f32 {
 /// Convert interleaved raw PCM bytes to interleaved stereo f32 (L, R, L, R, ...).
 /// Mono sources are duplicated to both channels; >2 channels are downmixed.
 #[allow(dead_code)]
-fn interleaved_to_stereo_f32(data: &[u8], num_channels: usize, bytes_per_sample: usize) -> Vec<f32> {
+fn interleaved_to_stereo_f32(
+    data: &[u8],
+    num_channels: usize,
+    bytes_per_sample: usize,
+) -> Vec<f32> {
     let frame_size = num_channels * bytes_per_sample;
     if frame_size == 0 {
         return Vec::new();
@@ -571,8 +574,16 @@ fn interleaved_to_stereo_f32(data: &[u8], num_channels: usize, bytes_per_sample:
                         right_count += 1;
                     }
                 }
-                stereo.push(if left_count > 0 { left_sum / left_count as f32 } else { 0.0 });
-                stereo.push(if right_count > 0 { right_sum / right_count as f32 } else { 0.0 });
+                stereo.push(if left_count > 0 {
+                    left_sum / left_count as f32
+                } else {
+                    0.0
+                });
+                stereo.push(if right_count > 0 {
+                    right_sum / right_count as f32
+                } else {
+                    0.0
+                });
             }
         }
     }

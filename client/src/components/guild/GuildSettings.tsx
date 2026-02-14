@@ -7,6 +7,8 @@ import { inviteApi } from '../../api/invites';
 import { channelApi } from '../../api/channels';
 import { useGuildStore } from '../../stores/guildStore';
 import { useAuthStore } from '../../stores/authStore';
+import { invalidateGuildPermissionCache, usePermissions } from '../../hooks/usePermissions';
+import { Permissions, hasPermission } from '../../types';
 import type { AuditLogEntry, Ban, Channel, Guild, Invite, Member, Role } from '../../types';
 import { isAllowedImageMimeType, isSafeImageDataUrl } from '../../lib/security';
 import { cn } from '../../lib/utils';
@@ -34,6 +36,9 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
   const navigate = useNavigate();
   const leaveGuild = useGuildStore((s) => s.leaveGuild);
   const authUser = useAuthStore((s) => s.user);
+  const { permissions, isAdmin } = usePermissions(guildId);
+  const canManageRoleSettings = isAdmin || hasPermission(permissions, Permissions.MANAGE_GUILD);
+  const memberRoleId = guildId;
   const [activeSection, setActiveSection] = useState<SettingsSection>('overview');
   const [guild, setGuild] = useState<Guild | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -55,7 +60,12 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
   const [editingRoleMentionable, setEditingRoleMentionable] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelType, setNewChannelType] = useState<'text' | 'voice'>('text');
+  const [newChannelRequiredRoleIds, setNewChannelRequiredRoleIds] = useState<string[]>([]);
+  const [editingChannelRoleIds, setEditingChannelRoleIds] = useState<Record<string, string[]>>({});
+  const [editingChannelAccessId, setEditingChannelAccessId] = useState<string | null>(null);
   const [memberSearch, setMemberSearch] = useState('');
+  const [editingMemberRoleUserId, setEditingMemberRoleUserId] = useState<string | null>(null);
+  const [draftMemberRoleIds, setDraftMemberRoleIds] = useState<string[]>([]);
   const [iconDataUrl, setIconDataUrl] = useState<string | null>(null);
   const [banReasonInput, setBanReasonInput] = useState('');
   const [banConfirmUserId, setBanConfirmUserId] = useState<string | null>(null);
@@ -109,7 +119,16 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
       }
       setRoles(rolesRes.data);
       setMembers(membersRes.data);
-      setChannels(channelsRes.data);
+      const normalizedChannels = channelsRes.data.map((channel) => ({
+        ...channel,
+        required_role_ids: channel.required_role_ids ?? [],
+      }));
+      setChannels(normalizedChannels);
+      setEditingChannelRoleIds(
+        Object.fromEntries(
+          normalizedChannels.map((channel) => [channel.id, channel.required_role_ids ?? []])
+        )
+      );
       setInvites(invitesRes.data);
       setBans(bansRes.data);
       setAuditEntries(auditRes.data.audit_log_entries || []);
@@ -154,6 +173,18 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
     const q = memberSearch.toLowerCase();
     return members.filter((m) => (m.nick || m.user.username || '').toLowerCase().includes(q));
   }, [members, memberSearch]);
+  const assignableRoles = useMemo(
+    () => roles.filter((role) => role.id !== memberRoleId),
+    [roles, memberRoleId]
+  );
+
+  const roleColorHex = (role: Role) =>
+    role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#99aab5';
+
+  const toggleRoleId = (roleIds: string[], roleId: string) =>
+    roleIds.includes(roleId)
+      ? roleIds.filter((id) => id !== roleId)
+      : [...roleIds, roleId];
 
   const saveOverview = async () => {
     await runAction(async () => {
@@ -184,10 +215,12 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
   };
 
   const createRole = async () => {
+    if (!canManageRoleSettings) return;
     if (!newRoleName.trim()) return;
     const colorInt = parseInt(newRoleColor.replace('#', ''), 16) || 0;
     await runAction(async () => {
       await guildApi.createRole(guildId, { name: newRoleName.trim(), color: colorInt, permissions: 0 });
+      invalidateGuildPermissionCache(guildId);
       setNewRoleName('');
       setNewRoleColor('#99aab5');
       await refreshAll();
@@ -195,9 +228,11 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
   };
 
   const renameRole = async (roleId: string, nextName: string) => {
+    if (!canManageRoleSettings) return;
     if (!nextName.trim()) return;
     await runAction(async () => {
       await guildApi.updateRole(guildId, roleId, { name: nextName.trim() });
+      invalidateGuildPermissionCache(guildId);
       await refreshAll();
     }, 'Failed to update role');
   };
@@ -211,6 +246,7 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
   };
 
   const saveRoleEdits = async () => {
+    if (!canManageRoleSettings) return;
     if (!editingRoleId) return;
     const colorInt = parseInt(editingRoleColor.replace('#', ''), 16) || 0;
     await runAction(async () => {
@@ -220,6 +256,7 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         hoist: editingRoleHoist,
         mentionable: editingRoleMentionable,
       } as Partial<Role>);
+      invalidateGuildPermissionCache(guildId);
       setEditingRoleId(null);
       await refreshAll();
     }, 'Failed to save role');
@@ -236,10 +273,40 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
   };
 
   const deleteRole = async (roleId: string) => {
+    if (!canManageRoleSettings) return;
     await runAction(async () => {
       await guildApi.deleteRole(guildId, roleId);
+      invalidateGuildPermissionCache(guildId);
       await refreshAll();
     }, 'Failed to delete role');
+  };
+
+  const startEditingMemberRoles = (member: Member) => {
+    if (!canManageRoleSettings) return;
+    setEditingMemberRoleUserId(member.user.id);
+    setDraftMemberRoleIds((member.roles || []).filter((roleId) => roleId !== memberRoleId));
+  };
+
+  const saveMemberRoles = async (userId: string) => {
+    if (!canManageRoleSettings) return;
+    await runAction(async () => {
+      await guildApi.updateMember(guildId, userId, {
+        roles: [memberRoleId, ...draftMemberRoleIds],
+      });
+      invalidateGuildPermissionCache(guildId);
+      setEditingMemberRoleUserId(null);
+      setDraftMemberRoleIds([]);
+      await refreshAll();
+    }, 'Failed to update member roles');
+  };
+
+  const updateChannelRequiredRoles = async (channelId: string) => {
+    if (!canManageRoleSettings) return;
+    const requiredRoleIds = editingChannelRoleIds[channelId] || [];
+    await runAction(async () => {
+      await channelApi.update(channelId, { required_role_ids: requiredRoleIds });
+      await refreshAll();
+    }, 'Failed to update channel access roles');
   };
 
   const createChannel = async () => {
@@ -249,8 +316,10 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         name: newChannelName.trim(),
         channel_type: newChannelType === 'voice' ? 2 : 0,
         parent_id: null,
+        ...(canManageRoleSettings ? { required_role_ids: newChannelRequiredRoleIds } : {}),
       });
       setNewChannelName('');
+      setNewChannelRequiredRoleIds([]);
       await refreshAll();
     }, 'Failed to create channel');
   };
@@ -319,8 +388,8 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      <div className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full bg-accent-primary/20 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-accent-success/10 blur-[140px]" />
+      <div className="pointer-events-none absolute -left-20 top-0 h-72 w-72 rounded-full blur-[120px]" style={{ backgroundColor: 'var(--ambient-glow-primary)' }} />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full blur-[140px]" style={{ backgroundColor: 'var(--ambient-glow-success)' }} />
 
       {isMobile ? (
         <div className="relative z-10 border-b border-border-subtle/70 bg-bg-secondary/70 px-3 pb-2.5 pt-[calc(var(--safe-top)+0.75rem)]">
@@ -351,27 +420,29 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
           </div>
         </div>
       ) : (
-        <div className="relative z-10 w-72 shrink-0 overflow-y-auto border-r border-border-subtle/70 bg-bg-secondary/65 px-4 py-10">
+        <div className="relative z-10 w-72 shrink-0 overflow-y-auto border-r border-border-subtle/70 bg-bg-secondary/65 px-5 py-10">
           <div className="ml-auto w-full max-w-[236px]">
-            <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            <div className="px-2 pb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">
               {guild?.name || guildName}
             </div>
-            {NAV_ITEMS.map(item => (
-              <button
-                key={item.id}
-                onClick={() => setActiveSection(item.id)}
-                className={`settings-nav-item ${activeSection === item.id ? 'active' : ''}`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            ))}
+            <div className="flex flex-col gap-3">
+              {NAV_ITEMS.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveSection(item.id)}
+                  className={`settings-nav-item p-6 ${activeSection === item.id ? 'active' : ''}`}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      <div className={cn('relative z-10 flex-1 overflow-y-auto', isMobile ? 'px-3 pb-[calc(var(--safe-bottom)+1rem)] pt-3' : 'px-6 py-10')}>
-        <div className="w-full">
+      <div className={cn('relative z-10 flex-1 overflow-y-auto', isMobile ? 'px-6 pb-[calc(var(--safe-bottom)+1rem)] pt-6' : 'px-12 py-10')}>
+        <div className="w-full max-w-[740px] space-y-10">
         {!isMobile && (
           <div className="fixed right-6 top-5 z-20 flex flex-col items-center gap-1">
             <button onClick={onClose} className="command-icon-btn rounded-full border border-border-strong bg-bg-secondary/75">
@@ -382,9 +453,9 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         )}
 
         {error && (
-          <div className="mb-3 rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-3 py-2 text-sm font-medium text-accent-danger">{error}</div>
+          <div className="rounded-xl border border-accent-danger/35 bg-accent-danger/10 px-4 py-2.5 text-sm font-medium text-accent-danger">{error}</div>
         )}
-        <div className="mb-5 flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => void refreshAll()}
             className="inline-flex h-10 items-center gap-2 rounded-lg border border-border-subtle bg-bg-mod-subtle px-4 text-sm font-semibold text-text-secondary hover:bg-bg-mod-strong hover:text-text-primary"
@@ -396,9 +467,9 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         </div>
 
         {activeSection === 'overview' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Server Overview</h2>
-            <div className="flex flex-col gap-5 sm:flex-row sm:gap-6">
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack-relaxed">
+            <h2 className="settings-section-title !mb-0">Server Overview</h2>
+            <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
               <div className="flex-shrink-0">
                 <label className="cursor-pointer">
                   <input type="file" accept="image/*" className="hidden" onChange={onGuildIconChange} />
@@ -419,10 +490,10 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                   </div>
                 </label>
               </div>
-              <div className="flex-1 space-y-5">
+              <div className="flex-1 card-stack-relaxed">
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Server Name</span>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-field mt-2" />
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-field mt-3" />
                 </label>
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Description</span>
@@ -430,13 +501,13 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={3}
-                    className="input-field mt-2 resize-none"
+                    className="input-field mt-3 resize-none"
                     placeholder="Describe your server"
                   />
                 </label>
               </div>
             </div>
-            <div className="mt-6 flex flex-wrap items-center gap-2.5">
+            <div className="settings-action-row">
               <button className="btn-primary" onClick={() => void saveOverview()}>Save Changes</button>
               {guild && authUser && guild.owner_id !== authUser.id && (
                 <button className="btn-ghost" onClick={() => void handleLeaveGuild()}>
@@ -444,54 +515,61 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                 </button>
               )}
             </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
+            <div className="grid gap-7 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="card-surface min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
                 <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Members</div>
                 <div className="mt-1 text-xl font-semibold text-text-primary">{members.length}</div>
               </div>
-              <div className="min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
+              <div className="card-surface min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
                 <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Roles</div>
                 <div className="mt-1 text-xl font-semibold text-text-primary">{roles.length}</div>
               </div>
-              <div className="min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
+              <div className="card-surface min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
                 <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Channels</div>
                 <div className="mt-1 text-xl font-semibold text-text-primary">{channels.length}</div>
               </div>
-              <div className="min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
+              <div className="card-surface min-h-[5.5rem] rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3.5">
                 <div className="text-sm font-semibold uppercase tracking-wide text-text-secondary">Active Invites</div>
                 <div className="mt-1 text-xl font-semibold text-text-primary">{invites.length}</div>
               </div>
             </div>
-            <div className="mt-4 rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-4 py-3 text-sm leading-6 text-text-secondary">
+            <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-4 py-3 text-sm leading-6 text-text-secondary">
               Keep this server profile complete so new members instantly recognize your community and can orient themselves faster.
             </div>
           </div>
         )}
 
         {activeSection === 'roles' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-6">Roles</h2>
-            <div className="space-y-2.5">
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack-relaxed">
+            <h2 className="settings-section-title !mb-0">Roles</h2>
+            {!canManageRoleSettings && (
+              <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-4 py-3 text-sm text-text-secondary">
+                Only server admins can create, edit, or assign roles.
+              </div>
+            )}
+            <div className="card-stack">
               {roles.map((role) => {
-                const roleColor = role.color ? '#' + role.color.toString(16).padStart(6, '0') : '#99aab5';
+                const roleColor = roleColorHex(role);
                 const isEditing = editingRoleId === role.id;
                 return (
                   <div key={role.id}>
-                    <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
+                    <div className="card-surface flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-4 py-3.5">
                       <GripVertical size={16} style={{ color: 'var(--text-muted)' }} />
                       <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-border-subtle" style={{ backgroundColor: roleColor }} />
                       <input
                         className="flex-1 bg-transparent text-base leading-normal outline-none"
                         style={{ color: roleColor !== '#000000' ? roleColor : 'var(--text-primary)' }}
                         defaultValue={role.name}
+                        disabled={!canManageRoleSettings}
                         onBlur={(e) => {
+                          if (!canManageRoleSettings) return;
                           if (e.target.value !== role.name) void renameRole(role.id, e.target.value);
                         }}
                       />
                       {role.hoist && (
                         <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-border-subtle" style={{ color: 'var(--text-muted)' }}>Hoisted</span>
                       )}
-                      {role.id !== guildId && (
+                      {canManageRoleSettings && role.id !== guildId && (
                         <button
                           className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary"
                           onClick={() => isEditing ? cancelRoleEditing() : startEditingRole(role)}
@@ -499,14 +577,14 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                           {isEditing ? 'Close' : 'Edit'}
                         </button>
                       )}
-                      {role.id !== guildId && (
+                      {canManageRoleSettings && role.id !== guildId && (
                         <button className="icon-btn" onClick={() => void deleteRole(role.id)}>
                           <Trash2 size={14} />
                         </button>
                       )}
                     </div>
                     {isEditing && (
-                      <div className="ml-0 mt-2 rounded-xl border border-border-subtle bg-bg-primary/60 p-4 space-y-4 sm:ml-8">
+                      <div className="card-surface ml-0 mt-3 rounded-xl border border-border-subtle bg-bg-primary/60 p-6 space-y-6 sm:ml-8">
                         <div className="flex items-center gap-4">
                           <label className="block">
                             <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Color</span>
@@ -549,7 +627,7 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                         </div>
                         <div>
                           <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Permissions</span>
-                          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {[
                               { name: 'Manage Channels', flag: 1 << 4 },
                               { name: 'Manage Server', flag: 1 << 5 },
@@ -580,7 +658,7 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                             ))}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="settings-action-row">
                           <button className="btn-primary" onClick={() => void saveRoleEdits()}>Save Changes</button>
                           <button
                             className="rounded-lg px-3.5 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary"
@@ -595,28 +673,30 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                 );
               })}
             </div>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <input className="input-field flex-1" placeholder="New role name" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} />
-              <input
-                type="color"
-                value={newRoleColor}
-                onChange={(e) => setNewRoleColor(e.target.value)}
-                className="h-10 w-10 cursor-pointer rounded-lg border border-border-subtle bg-transparent"
-                title="Role color"
-              />
-              <button className="btn-primary" onClick={() => void createRole()}>Create Role</button>
-            </div>
+            {canManageRoleSettings && (
+              <div className="settings-action-row">
+                <input className="input-field flex-1" placeholder="New role name" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} />
+                <input
+                  type="color"
+                  value={newRoleColor}
+                  onChange={(e) => setNewRoleColor(e.target.value)}
+                  className="h-10 w-10 cursor-pointer rounded-lg border border-border-subtle bg-transparent"
+                  title="Role color"
+                />
+                <button className="btn-primary" onClick={() => void createRole()}>Create Role</button>
+              </div>
+            )}
           </div>
         )}
 
         {activeSection === 'members' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-4">Members</h2>
-            <input type="text" placeholder="Search members" className="input-field mb-4" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
-            <div className="space-y-2">
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack">
+            <h2 className="settings-section-title !mb-0">Members</h2>
+            <input type="text" placeholder="Search members" className="input-field" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
+            <div className="card-stack">
               {filteredMembers.map((member) => (
                 <div key={member.user.id}>
-                  <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
+                  <div className="card-surface flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold" style={{ backgroundColor: 'var(--accent-primary)' }}>
                       {member.user.username.charAt(0).toUpperCase()}
                     </div>
@@ -633,10 +713,13 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                     <div className="ml-auto flex items-center gap-1">
                       {member.roles && member.roles.length > 0 && (
                         <div className="hidden sm:flex items-center gap-1 mr-2">
-                          {member.roles.slice(0, 3).map((roleId) => {
+                          {member.roles
+                            .filter((roleId) => roleId !== memberRoleId)
+                            .slice(0, 3)
+                            .map((roleId) => {
                             const role = roles.find((r) => r.id === roleId);
                             if (!role) return null;
-                            const rColor = role.color ? '#' + role.color.toString(16).padStart(6, '0') : 'var(--text-muted)';
+                            const rColor = roleColorHex(role);
                             return (
                               <span key={roleId} className="inline-flex items-center gap-1 rounded-md border border-border-subtle px-1.5 py-0.5 text-[11px] font-medium" style={{ color: rColor }}>
                                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: rColor }} />
@@ -645,6 +728,21 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                             );
                           })}
                         </div>
+                      )}
+                      {canManageRoleSettings && (
+                        <button
+                          className="rounded-lg px-3.5 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary"
+                          onClick={() => {
+                            if (editingMemberRoleUserId === member.user.id) {
+                              setEditingMemberRoleUserId(null);
+                              setDraftMemberRoleIds([]);
+                              return;
+                            }
+                            startEditingMemberRoles(member);
+                          }}
+                        >
+                          {editingMemberRoleUserId === member.user.id ? 'Close Roles' : 'Roles'}
+                        </button>
                       )}
                       <button className="rounded-lg px-3.5 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary" onClick={() => void kickMember(member.user.id)}>Kick</button>
                       <button
@@ -659,7 +757,7 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                     </div>
                   </div>
                   {banConfirmUserId === member.user.id && (
-                    <div className="ml-10 mt-2 rounded-xl border border-accent-danger/30 bg-accent-danger/5 p-3 space-y-2">
+                    <div className="card-surface ml-10 mt-2 rounded-xl border border-accent-danger/30 bg-accent-danger/5 p-3 space-y-2">
                       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                         Ban {member.user.username}?
                       </p>
@@ -692,6 +790,58 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                       </div>
                     </div>
                   )}
+                  {canManageRoleSettings && editingMemberRoleUserId === member.user.id && (
+                    <div className="card-surface ml-10 mt-2 rounded-xl border border-border-subtle bg-bg-primary/60 p-3 space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                        Extra Access Roles (Member role is always included)
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {assignableRoles.map((role) => {
+                          const checked = draftMemberRoleIds.includes(role.id);
+                          return (
+                            <label
+                              key={role.id}
+                              className="card-surface flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-mod-subtle/60 px-2.5 py-2 text-sm text-text-secondary"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  setDraftMemberRoleIds((prev) => toggleRoleId(prev, role.id))
+                                }
+                                className="h-4 w-4 rounded border-border-subtle accent-accent-primary"
+                              />
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full"
+                                style={{ backgroundColor: roleColorHex(role) }}
+                              />
+                              <span className="truncate">{role.name}</span>
+                            </label>
+                          );
+                        })}
+                        {assignableRoles.length === 0 && (
+                          <p className="text-sm text-text-muted">No assignable roles yet.</p>
+                        )}
+                      </div>
+                      <div className="settings-action-row">
+                        <button
+                          className="btn-primary"
+                          onClick={() => void saveMemberRoles(member.user.id)}
+                        >
+                          Save Roles
+                        </button>
+                        <button
+                          className="rounded-lg px-3.5 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary"
+                          onClick={() => {
+                            setEditingMemberRoleUserId(null);
+                            setDraftMemberRoleIds([]);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               {filteredMembers.length === 0 && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No members found.</p>}
@@ -700,18 +850,98 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         )}
 
         {activeSection === 'channels' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-4">Channels</h2>
-            <div className="space-y-2">
-              {channels.sort((a, b) => a.position - b.position).map((channel) => (
-                <div key={channel.id} className="flex items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
-                  <Hash size={16} />
-                  <span className="flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>{channel.name || 'unnamed'}</span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{channel.type === 2 ? 'voice' : 'text'}</span>
-                  <button className="icon-btn" onClick={() => void deleteChannel(channel.id)}><Trash2 size={14} /></button>
-                </div>
-              ))}
-              <div className="mt-2 flex flex-wrap items-center gap-2.5">
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack">
+            <h2 className="settings-section-title !mb-0">Channels</h2>
+            {!canManageRoleSettings && (
+              <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-4 py-3 text-sm text-text-secondary">
+                Channel role requirements can only be changed by server admins.
+              </div>
+            )}
+            <div className="card-stack">
+              {channels.sort((a, b) => a.position - b.position).map((channel) => {
+                const requiredRoleIds = editingChannelRoleIds[channel.id] ?? channel.required_role_ids ?? [];
+                const isEditingAccess = editingChannelAccessId === channel.id;
+                return (
+                  <div key={channel.id}>
+                    <div className="card-surface flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
+                      <Hash size={16} />
+                      <span className="flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>{channel.name || 'unnamed'}</span>
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{channel.type === 2 ? 'voice' : 'text'}</span>
+                      <span className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-semibold text-text-secondary">
+                        Access: Member{requiredRoleIds.length > 0 ? ` + ${requiredRoleIds.length}` : ''}
+                      </span>
+                      {canManageRoleSettings && (
+                        <button
+                          className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary"
+                          onClick={() => setEditingChannelAccessId((prev) => (prev === channel.id ? null : channel.id))}
+                        >
+                          {isEditingAccess ? 'Close Access' : 'Access Roles'}
+                        </button>
+                      )}
+                      <button className="icon-btn" onClick={() => void deleteChannel(channel.id)}><Trash2 size={14} /></button>
+                    </div>
+                    {canManageRoleSettings && isEditingAccess && (
+                      <div className="card-surface ml-10 mt-2 rounded-xl border border-border-subtle bg-bg-primary/60 p-3 space-y-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                          Require Additional Roles
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {assignableRoles.map((role) => {
+                            const checked = requiredRoleIds.includes(role.id);
+                            return (
+                              <label
+                                key={role.id}
+                                className="card-surface flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-mod-subtle/60 px-2.5 py-2 text-sm text-text-secondary"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setEditingChannelRoleIds((prev) => ({
+                                      ...prev,
+                                      [channel.id]: toggleRoleId(prev[channel.id] ?? [], role.id),
+                                    }))
+                                  }
+                                  className="h-4 w-4 rounded border-border-subtle accent-accent-primary"
+                                />
+                                <span
+                                  className="inline-block h-2.5 w-2.5 rounded-full"
+                                  style={{ backgroundColor: roleColorHex(role) }}
+                                />
+                                <span className="truncate">{role.name}</span>
+                              </label>
+                            );
+                          })}
+                          {assignableRoles.length === 0 && (
+                            <p className="text-sm text-text-muted">Create roles to limit channel access.</p>
+                          )}
+                        </div>
+                        <div className="settings-action-row">
+                          <button
+                            className="btn-primary"
+                            onClick={() => void updateChannelRequiredRoles(channel.id)}
+                          >
+                            Save Access
+                          </button>
+                          <button
+                            className="rounded-lg px-3.5 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-mod-strong hover:text-text-primary"
+                            onClick={() => {
+                              setEditingChannelRoleIds((prev) => ({
+                                ...prev,
+                                [channel.id]: channel.required_role_ids ?? [],
+                              }));
+                              setEditingChannelAccessId(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="settings-action-row">
                 <input className="input-field flex-1" placeholder="New channel name" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} />
                 <select className="select-field min-w-[8.75rem]" value={newChannelType} onChange={(e) => setNewChannelType(e.target.value as 'text' | 'voice')}>
                   <option value="text">Text</option>
@@ -719,14 +949,49 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
                 </select>
                 <button className="btn-primary" onClick={() => void createChannel()}>Create</button>
               </div>
+              {canManageRoleSettings && (
+                <div className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/60 px-3.5 py-3 space-y-2.5">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                    New Channel: Additional Required Roles
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {assignableRoles.map((role) => {
+                      const checked = newChannelRequiredRoleIds.includes(role.id);
+                      return (
+                        <label
+                          key={role.id}
+                          className="card-surface flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-primary/50 px-2.5 py-2 text-sm text-text-secondary"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              setNewChannelRequiredRoleIds((prev) => toggleRoleId(prev, role.id))
+                            }
+                            className="h-4 w-4 rounded border-border-subtle accent-accent-primary"
+                          />
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: roleColorHex(role) }}
+                          />
+                          <span className="truncate">{role.name}</span>
+                        </label>
+                      );
+                    })}
+                    {assignableRoles.length === 0 && (
+                      <p className="text-sm text-text-muted">No extra roles available yet.</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {activeSection === 'invites' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="settings-section-title !mb-0">Invites</h2>
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack">
+            <h2 className="settings-section-title !mb-0">Invites</h2>
+            <div className="settings-action-row">
               <button className="btn-primary text-sm" onClick={() => void createInvite()}>
                 Create Invite
               </button>
@@ -762,11 +1027,11 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         )}
 
         {activeSection === 'bans' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-4">Bans</h2>
-            <div className="space-y-2">
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack">
+            <h2 className="settings-section-title !mb-0">Bans</h2>
+            <div className="card-stack">
               {bans.map((ban) => (
-                <div key={ban.user.id} className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
+                <div key={ban.user.id} className="card-surface flex flex-wrap items-center gap-2.5 rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: 'var(--accent-danger)' }}>
                     {ban.user.username.charAt(0).toUpperCase()}
                   </div>
@@ -790,11 +1055,11 @@ export function GuildSettings({ guildId, guildName, onClose }: GuildSettingsProp
         )}
 
         {activeSection === 'audit-log' && (
-          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)]">
-            <h2 className="settings-section-title mb-4">Audit Log</h2>
-            <div className="space-y-2">
+          <div className="settings-surface-card min-h-[calc(100dvh-13.5rem)] !p-8 max-sm:!p-6 card-stack">
+            <h2 className="settings-section-title !mb-0">Audit Log</h2>
+            <div className="card-stack">
               {auditEntries.map((entry) => (
-                <div key={entry.id} className="rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
+                <div key={entry.id} className="card-surface rounded-xl border border-border-subtle bg-bg-mod-subtle/70 px-3.5 py-3">
                   <div className="text-sm" style={{ color: 'var(--text-primary)' }}>Action {entry.action_type} on {entry.target_id || 'n/a'}</div>
                   <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                     by {entry.user_id} at {new Date(entry.created_at).toLocaleString()}

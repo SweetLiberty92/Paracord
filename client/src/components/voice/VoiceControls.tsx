@@ -28,13 +28,13 @@ export function VoiceControls() {
   if (!connected) return null;
 
   return (
-    <div className="px-3 pb-2">
+    <div className="px-4 py-3">
       <div
         className="rounded-xl border border-border-subtle/60 overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.03)' }}
+        style={{ backgroundColor: 'color-mix(in srgb, var(--bg-mod-subtle) 70%, transparent)' }}
       >
         {/* Connection status header */}
-        <div className="flex items-center gap-3 px-3.5 pt-2.5 pb-1.5">
+        <div className="flex items-center gap-3 px-5 pt-4 pb-3">
           <Signal size={16} className="voice-connected-pulse shrink-0" style={{ color: 'var(--accent-success)' }} />
           <div className="min-w-0 flex-1">
             <div className="text-[12px] font-semibold tracking-wide" style={{ color: 'var(--accent-success)' }}>
@@ -47,10 +47,10 @@ export function VoiceControls() {
         </div>
 
         {/* Divider */}
-        <div className="mx-3 h-px bg-border-subtle/40 my-0" />
+        <div className="mx-3.5 h-px bg-border-subtle/40 my-2" />
 
         {/* Action buttons row */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+        <div className="flex items-center gap-4 px-5 py-4">
           <button
             onClick={toggleMute}
             className="flex h-10 w-10 items-center justify-center rounded-lg transition-colors"

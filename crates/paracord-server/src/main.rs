@@ -264,6 +264,7 @@ async fn main() -> Result<()> {
         voice,
         storage,
         online_users: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
+        user_presences: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     };
 
     let router = paracord_api::build_router()

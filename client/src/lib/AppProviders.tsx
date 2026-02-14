@@ -2,10 +2,12 @@ import { useEffect, type ReactNode } from 'react';
 import { useGateway } from '../hooks/useGateway';
 import { useTheme } from '../hooks/useTheme';
 import { useVoiceKeybinds } from '../hooks/useVoiceKeybinds';
+import { useActivityPresence } from '../hooks/useActivityPresence';
 import { useAuthStore } from '../stores/authStore';
 import { useGuildStore } from '../stores/guildStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { RestartBanner } from '../components/RestartBanner';
+import { UpdateNotification } from '../components/UpdateNotification';
 
 function AppInitializer({ children }: { children: ReactNode }) {
   // Initialize gateway connection when authenticated
@@ -14,6 +16,8 @@ function AppInitializer({ children }: { children: ReactNode }) {
   useTheme();
   // Register global voice keybind handlers from user settings
   useVoiceKeybinds();
+  // Detect foreground desktop app and publish "Playing ..." presence.
+  useActivityPresence();
   const token = useAuthStore((s) => s.token);
   const fetchUser = useAuthStore((s) => s.fetchUser);
   const fetchSettings = useAuthStore((s) => s.fetchSettings);
@@ -49,6 +53,7 @@ function AppInitializer({ children }: { children: ReactNode }) {
   return (
     <>
       <RestartBanner />
+      <UpdateNotification />
       {children}
     </>
   );
