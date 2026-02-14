@@ -550,7 +550,7 @@ async fn run_session(
     let mut last_heartbeat = Instant::now();
     let heartbeat_timeout = Duration::from_millis(HEARTBEAT_TIMEOUT_MS);
 
-    loop {
+    let (disconnect_reason, heartbeat_timed_out) = loop {
         tokio::select! {
             msg = receiver.next() => {
                 match msg {
@@ -562,7 +562,26 @@ async fn run_session(
                             }
                         }
                     }
-                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(Message::Close(frame))) => {
+                        break (
+                            if let Some(frame) = frame {
+                                format!(
+                                    "client close frame (code={}, reason={})",
+                                    u16::from(frame.code),
+                                    frame.reason
+                                )
+                            } else {
+                                "client close frame (no code/reason)".to_string()
+                            },
+                            false,
+                        );
+                    }
+                    Some(Err(err)) => {
+                        break (format!("websocket receive error: {err}"), false);
+                    }
+                    None => {
+                        break ("websocket stream ended".to_string(), false);
+                    }
                     _ => {}
                 }
             }
@@ -590,21 +609,26 @@ async fn run_session(
                             "d": event.payload,
                         });
                         if sender.send(Message::Text(dispatch.to_string().into())).await.is_err() {
-                            break;
+                            break ("websocket send error".to_string(), false);
                         }
                     }
                 }
             }
             _ = tokio::time::sleep(Duration::from_secs(5)) => {
                 if last_heartbeat.elapsed() > heartbeat_timeout {
-                    tracing::info!("Client {} heartbeat timeout", session.user_id);
-                    break;
+                    break (
+                        format!("heartbeat timeout after {}ms", HEARTBEAT_TIMEOUT_MS),
+                        true,
+                    );
                 }
             }
         }
+    };
+    if heartbeat_timed_out {
+        tracing::warn!("Client {} disconnected: {}", session.user_id, disconnect_reason);
+    } else {
+        tracing::info!("Client {} disconnected: {}", session.user_id, disconnect_reason);
     }
-
-    tracing::info!("Client {} disconnected", session.user_id);
     let now = chrono::Utc::now().timestamp();
     let mut cache = session_cache().write().await;
     cache.insert(

@@ -11,6 +11,7 @@ import { useRelationshipStore } from '../stores/relationshipStore';
 import { useUIStore } from '../stores/uiStore';
 import { GatewayEvents } from './events';
 import { getStoredServerUrl } from '../lib/apiBaseUrl';
+import { connectionManager } from '../lib/connectionManager';
 
 function resolveWsUrl(): string {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
@@ -318,6 +319,14 @@ class GatewayConnection {
   }
 
   updatePresence(status: string, activities: Activity[] = [], customStatus: string | null = null) {
+    const activeConnections = connectionManager.getAllConnections().filter((conn) => conn.connected);
+    if (activeConnections.length > 0) {
+      for (const conn of activeConnections) {
+        connectionManager.updatePresence(conn.serverId, status, activities, customStatus);
+      }
+      return;
+    }
+
     this.send({
       op: 3,
       d: {
@@ -330,6 +339,14 @@ class GatewayConnection {
   }
 
   updateVoiceState(guildId: string | null, channelId: string | null, selfMute: boolean, selfDeaf: boolean) {
+    const activeConnections = connectionManager.getAllConnections().filter((conn) => conn.connected);
+    if (activeConnections.length > 0) {
+      for (const conn of activeConnections) {
+        connectionManager.updateVoiceState(conn.serverId, guildId, channelId, selfMute, selfDeaf);
+      }
+      return;
+    }
+
     this.send({
       op: 4,
       d: {
