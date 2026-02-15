@@ -16,8 +16,6 @@
 
 ---
 
-> **NOTE**: This project started as a weekend build and has grown fast. I'm one person building this in my free time after work, so things won't always be polished. There will be bugs, some UI elements will feel rough around the edges. That said, it's come a long way and new features are landing constantly. If you have feature suggestions or run into issues, I'm all ears.
-
 ## The Why
 
 On February 9th, 2026, Discord's CEO announced that they would be starting to roll out age verification in the coming month. This meant that all accounts would be labeled as "teen" and one would have to prove they were an adult through an AI powered face scan or uploading government issued ID. The privacy implications of this should be incredibly obvious, and at least my group of friends that regularly used Discord were 100% against giving Discord any of this information, and frankly, didn't feel they should have to. So Paracord was built as a privacy-first, self-hosted alternative in under a week, with full federation and decentralized operation now being built out in active phases. Many new features are coming to Paracord at breakneck speed, and it already includes many of Nitro's big features like high resolution streaming, just without the paywall :).
