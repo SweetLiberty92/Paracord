@@ -215,16 +215,43 @@ Paracord uses SQLite by default — zero setup, single file, works out of the bo
 
 #### 1. Install PostgreSQL
 
-**Windows:** Download and run the installer from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/). Use the defaults and remember the password you set for the `postgres` user.
+<details>
+<summary><strong>Windows</strong></summary>
 
-**Ubuntu/Debian:**
+1. Download the installer from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/) (pick the latest version 16.x)
+2. Run the installer. Use all the defaults and set a password for the `postgres` superuser when prompted — **remember this password**
+3. When asked about components, make sure **"Command Line Tools"** is checked (it is by default)
+4. Finish the installer. The PostgreSQL service starts automatically
+
+The installer adds `psql` and other tools to `C:\Program Files\PostgreSQL\16\bin\`. If you want to use them from any terminal, add that directory to your system PATH:
+```
+Settings → System → About → Advanced system settings → Environment Variables → Path → Edit → New
+```
+Add: `C:\Program Files\PostgreSQL\16\bin`
+
+To verify it's running, open **Command Prompt** or **PowerShell** and run:
+```cmd
+psql -U postgres
+```
+Enter the password you set during installation. If you see a `postgres=#` prompt, you're good. Type `\q` to exit.
+
+</details>
+
+<details>
+<summary><strong>Ubuntu / Debian</strong></summary>
+
 ```bash
 sudo apt update
 sudo apt install postgresql postgresql-contrib
 sudo systemctl start postgresql
+sudo systemctl enable postgresql
 ```
 
-**Docker (standalone):**
+</details>
+
+<details>
+<summary><strong>Docker (standalone)</strong></summary>
+
 ```bash
 docker run -d --name paracord-postgres \
   -e POSTGRES_USER=paracord \
@@ -235,28 +262,40 @@ docker run -d --name paracord-postgres \
   postgres:16-alpine
 ```
 
+This creates the database and user automatically — skip step 2.
+
+</details>
+
 PostgreSQL 12 or newer is required. Version 16 is recommended.
 
 #### 2. Create a Database and User
 
-Skip this step if you used the Docker command above (it creates both automatically).
+Skip this step if you used the Docker command above.
 
-Open a PostgreSQL shell:
-```bash
-# Linux
-sudo -u postgres psql
-
-# Windows (from the PostgreSQL install directory)
+**Windows** — open Command Prompt or PowerShell:
+```cmd
 psql -U postgres
 ```
+Enter the password you set during installation when prompted.
 
-Then run:
+**Linux:**
+```bash
+sudo -u postgres psql
+```
+
+Then run these SQL commands:
 ```sql
 CREATE USER paracord WITH PASSWORD 'pick-a-strong-password';
 CREATE DATABASE paracord OWNER paracord;
 ```
 
 Type `\q` to exit.
+
+To verify the new database works:
+```cmd
+psql -U paracord -d paracord -h localhost
+```
+Enter the password you just set. If you get a `paracord=>` prompt, the database is ready.
 
 #### 3. Point Paracord at PostgreSQL
 
@@ -272,15 +311,35 @@ max_connections = 20
 That's the minimum needed. The `engine` field tells Paracord which migration track to use, and the `url` is a standard PostgreSQL connection string.
 
 **Or use environment variables** (useful for Docker / CI):
+
+Linux / macOS:
 ```bash
 export PARACORD_DATABASE_ENGINE=postgres
 export PARACORD_DATABASE_URL="postgresql://paracord:pick-a-strong-password@localhost:5432/paracord"
+```
+
+Windows (Command Prompt):
+```cmd
+set PARACORD_DATABASE_ENGINE=postgres
+set PARACORD_DATABASE_URL=postgresql://paracord:pick-a-strong-password@localhost:5432/paracord
+```
+
+Windows (PowerShell):
+```powershell
+$env:PARACORD_DATABASE_ENGINE = "postgres"
+$env:PARACORD_DATABASE_URL = "postgresql://paracord:pick-a-strong-password@localhost:5432/paracord"
 ```
 
 Environment variables always override the config file.
 
 #### 4. Start the Server
 
+**Windows:**
+```cmd
+paracord-server.exe --config config\paracord.toml
+```
+
+**Linux:**
 ```bash
 ./paracord-server --config config/paracord.toml
 ```
