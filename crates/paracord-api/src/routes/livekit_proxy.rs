@@ -14,8 +14,10 @@ use futures_util::{SinkExt, StreamExt};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use paracord_core::AppState;
 use serde::Deserialize;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const LIVEKIT_PROXY_MAX_MESSAGE_SIZE: usize = 2 * 1024 * 1024;
+static LIVEKIT_PROXY_CONN_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Deserialize)]
 struct LiveKitProxyClaims {
@@ -209,22 +211,62 @@ fn sanitize_target_for_log(target: &str) -> String {
 
 fn handle_ws(state: AppState, ws: WebSocketUpgrade, req: Request) -> Response {
     let target = build_target(&state.config.livekit_http_url, &req, true);
+    let conn_id = LIVEKIT_PROXY_CONN_SEQ.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
-        "LiveKit WS proxy: upgrading connection to {}",
+        "LiveKit WS proxy[{}]: upgrading connection to {}",
+        conn_id,
         sanitize_target_for_log(&target)
     );
     // Keep signaling payload limits explicit and conservative.
     ws.max_message_size(LIVEKIT_PROXY_MAX_MESSAGE_SIZE)
         .max_frame_size(LIVEKIT_PROXY_MAX_MESSAGE_SIZE)
-        .on_upgrade(move |client_socket| proxy_ws(client_socket, target))
+        .on_upgrade(move |client_socket| proxy_ws(client_socket, target, conn_id))
+}
+
+fn axum_to_tungstenite_message(msg: axum::extract::ws::Message) -> tokio_tungstenite::tungstenite::Message {
+    use axum::extract::ws::Message as AMsg;
+    use tokio_tungstenite::tungstenite::{
+        protocol::{frame::coding::CloseCode, CloseFrame},
+        Message as TMsg,
+    };
+
+    match msg {
+        AMsg::Text(t) => TMsg::Text(t.as_str().to_string().into()),
+        AMsg::Binary(b) => TMsg::Binary(b.to_vec().into()),
+        AMsg::Ping(b) => TMsg::Ping(b.to_vec().into()),
+        AMsg::Pong(b) => TMsg::Pong(b.to_vec().into()),
+        AMsg::Close(frame) => TMsg::Close(frame.map(|f| CloseFrame {
+            code: CloseCode::from(f.code),
+            reason: f.reason.to_string().into(),
+        })),
+    }
+}
+
+fn tungstenite_to_axum_message(
+    msg: tokio_tungstenite::tungstenite::Message,
+) -> Option<axum::extract::ws::Message> {
+    use axum::extract::ws::{CloseFrame as ACloseFrame, Message as AMsg};
+    use tokio_tungstenite::tungstenite::Message as TMsg;
+
+    match msg {
+        TMsg::Text(t) => Some(AMsg::Text(t.as_str().to_string().into())),
+        TMsg::Binary(b) => Some(AMsg::Binary(b.to_vec().into())),
+        TMsg::Ping(b) => Some(AMsg::Ping(b.to_vec().into())),
+        TMsg::Pong(b) => Some(AMsg::Pong(b.to_vec().into())),
+        TMsg::Close(frame) => Some(AMsg::Close(frame.map(|f| ACloseFrame {
+            code: f.code.into(),
+            reason: f.reason.to_string().into(),
+        }))),
+        TMsg::Frame(_) => None,
+    }
 }
 
 /// Bidirectional WebSocket proxy between a client and the local LiveKit server.
 ///
-/// We forward data frames (text/binary) and close cooperatively.
-/// Ping/pong is handled explicitly on each side so idle signaling sockets
-/// still satisfy keepalive probes without relying on implicit flush behavior.
-async fn proxy_ws(client_socket: WebSocket, target: String) {
+/// We keep one writer per side (client->backend and backend->client) and
+/// forward control frames transparently. This avoids cross-task sink locking,
+/// which can deadlock under backpressure and cause intermittent join hangs.
+async fn proxy_ws(client_socket: WebSocket, target: String, conn_id: u64) {
     use axum::extract::ws::Message as AMsg;
     use std::sync::Arc;
     use tokio_tungstenite::tungstenite::Message as TMsg;
@@ -243,8 +285,8 @@ async fn proxy_ws(client_socket: WebSocket, target: String) {
     // slow to accept connections right after room creation, so retrying at
     // the proxy level avoids burning through the client SDK's limited
     // connect retries on transient backend delays.
-    const MAX_BACKEND_RETRIES: u32 = 6;
-    const BACKEND_CONNECT_TIMEOUT_SECS: u64 = 8;
+    const MAX_BACKEND_RETRIES: u32 = 2;
+    const BACKEND_CONNECT_TIMEOUT_SECS: u64 = 2;
 
     let mut backend_opt = None;
     for attempt in 0..MAX_BACKEND_RETRIES {
@@ -262,7 +304,8 @@ async fn proxy_ws(client_socket: WebSocket, target: String) {
             }
             Ok(Err(e)) => {
                 tracing::warn!(
-                    "LiveKit backend connect attempt {}/{} failed for {}: {}",
+                    "LiveKit WS proxy[{}]: backend connect attempt {}/{} failed for {}: {}",
+                    conn_id,
                     attempt + 1,
                     MAX_BACKEND_RETRIES,
                     redacted_target,
@@ -271,7 +314,8 @@ async fn proxy_ws(client_socket: WebSocket, target: String) {
             }
             Err(_) => {
                 tracing::warn!(
-                    "LiveKit backend connect attempt {}/{} timed out for {} ({}s)",
+                    "LiveKit WS proxy[{}]: backend connect attempt {}/{} timed out for {} ({}s)",
+                    conn_id,
                     attempt + 1,
                     MAX_BACKEND_RETRIES,
                     redacted_target,
@@ -280,7 +324,7 @@ async fn proxy_ws(client_socket: WebSocket, target: String) {
             }
         }
         if attempt + 1 < MAX_BACKEND_RETRIES {
-            tokio::time::sleep(std::time::Duration::from_millis(500 * (attempt as u64 + 1))).await;
+            tokio::time::sleep(std::time::Duration::from_millis(250 * (attempt as u64 + 1))).await;
         }
     }
 
@@ -288,8 +332,9 @@ async fn proxy_ws(client_socket: WebSocket, target: String) {
         Some(b) => b,
         None => {
             tracing::error!(
-                "All {} attempts to connect to LiveKit backend at {} failed. \
+                "LiveKit WS proxy[{}]: all {} attempts to connect to LiveKit backend at {} failed. \
                  Check that LiveKit is running and accessible.",
+                conn_id,
                 MAX_BACKEND_RETRIES,
                 redacted_target
             );
@@ -308,185 +353,177 @@ async fn proxy_ws(client_socket: WebSocket, target: String) {
 
     let (backend_write, mut backend_read) = backend.split();
     let (client_write, mut client_read) = client_socket.split();
-    // Share write halves so either read-loop can send immediate pong/close
-    // frames on that same side.
     let backend_write = Arc::new(tokio::sync::Mutex::new(backend_write));
     let client_write = Arc::new(tokio::sync::Mutex::new(client_write));
 
-    // Use CancellationTokens so each half can signal the other to stop
-    // cooperatively (with a close frame) instead of aborting mid-stream.
-    let cancel = tokio_util::sync::CancellationToken::new();
+    tracing::debug!(
+        "LiveKit WS proxy[{}]: connected to {}",
+        conn_id,
+        redacted_target
+    );
 
     let c2b_backend_write = backend_write.clone();
     let c2b_client_write = client_write.clone();
-    tracing::debug!("LiveKit WS proxy connected to {}", redacted_target);
-
-    let cancel_c2b = cancel.clone();
     let c2b = tokio::spawn(async move {
-        // Active keepalive: send a ping to the client every 20 seconds so we
-        // detect dead browser connections faster than waiting for a TCP timeout.
-        let mut keepalive = tokio::time::interval(std::time::Duration::from_secs(20));
-        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        // Skip the first immediate tick.
-        keepalive.tick().await;
-
         loop {
-            tokio::select! {
-                biased;
-                _ = cancel_c2b.cancelled() => break,
-                maybe_msg = client_read.next() => {
-                    let msg = match maybe_msg {
-                        Some(Ok(m)) => m,
-                        Some(Err(e)) => {
-                            tracing::debug!("LiveKit WS proxy: client read error: {}", e);
-                            break;
-                        }
-                        None => break,
-                    };
-                    match msg {
-                        AMsg::Text(t) => {
-                            if c2b_backend_write
-                                .lock()
-                                .await
-                                .send(TMsg::Text(t.as_str().to_string().into()))
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        AMsg::Binary(b) => {
-                            if c2b_backend_write
-                                .lock()
-                                .await
-                                .send(TMsg::Binary(b.to_vec().into()))
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        AMsg::Ping(p) => {
-                            // Keep client-side keepalive healthy immediately.
-                            let _ = c2b_client_write
-                                .lock()
-                                .await
-                                .send(AMsg::Pong(p))
-                                .await;
-                        }
-                        AMsg::Pong(_) => {
-                            // Browser-level pong; no proxy action needed.
-                        }
-                        AMsg::Close(_) => break,
-                    }
+            let msg = match client_read.next().await {
+                Some(Ok(m)) => m,
+                Some(Err(e)) => {
+                    tracing::debug!("LiveKit WS proxy[{}]: client read error: {}", conn_id, e);
+                    break;
                 }
-                _ = keepalive.tick() => {
-                    // Send a ping to the client to keep the connection alive.
+                None => {
+                    tracing::debug!("LiveKit WS proxy[{}]: client socket closed", conn_id);
+                    break;
+                }
+            };
+
+            if let AMsg::Close(ref frame) = msg {
+                if let Some(frame) = frame {
+                    tracing::debug!(
+                        "LiveKit WS proxy[{}]: client sent close code={} reason={}",
+                        conn_id,
+                        frame.code,
+                        frame.reason
+                    );
+                } else {
+                    tracing::debug!("LiveKit WS proxy[{}]: client sent close frame", conn_id);
+                }
+            }
+
+            match msg {
+                AMsg::Ping(payload) => {
+                    // Heartbeats are hop-by-hop. Respond directly to the client
+                    // instead of relying on backend pass-through.
                     if c2b_client_write
                         .lock()
                         .await
-                        .send(AMsg::Ping(vec![].into()))
+                        .send(AMsg::Pong(payload))
                         .await
                         .is_err()
                     {
-                        tracing::debug!("LiveKit WS proxy: client keepalive ping failed");
+                        tracing::debug!(
+                            "LiveKit WS proxy[{}]: failed to reply pong to client ping",
+                            conn_id
+                        );
                         break;
                     }
                 }
+                AMsg::Pong(_) => {
+                    // Browser pong observed; no forwarding needed.
+                }
+                AMsg::Text(_) | AMsg::Binary(_) => {
+                    if c2b_backend_write
+                        .lock()
+                        .await
+                        .send(axum_to_tungstenite_message(msg))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!(
+                            "LiveKit WS proxy[{}]: failed to forward client frame to backend",
+                            conn_id
+                        );
+                        break;
+                    }
+                }
+                AMsg::Close(_) => {
+                    let _ = c2b_backend_write
+                        .lock()
+                        .await
+                        .send(axum_to_tungstenite_message(msg))
+                        .await;
+                    break;
+                }
             }
         }
-        // Always send a proper close frame to LiveKit so it can clean up
-        // the participant session immediately instead of waiting for a timeout.
         let _ = c2b_backend_write.lock().await.close().await;
-        cancel_c2b.cancel();
     });
 
     let b2c_backend_write = backend_write.clone();
     let b2c_client_write = client_write.clone();
-    let cancel_b2c = cancel.clone();
     let b2c = tokio::spawn(async move {
-        // Active keepalive: ping the LiveKit backend every 20 seconds to keep
-        // the connection alive through NAT/firewalls and detect stale sockets.
-        let mut keepalive = tokio::time::interval(std::time::Duration::from_secs(20));
-        keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        keepalive.tick().await;
-
         loop {
-            tokio::select! {
-                biased;
-                _ = cancel_b2c.cancelled() => break,
-                maybe_msg = backend_read.next() => {
-                    let msg = match maybe_msg {
-                        Some(Ok(m)) => m,
-                        _ => break,
-                    };
-                    match msg {
-                        TMsg::Text(t) => {
-                            if b2c_client_write
-                                .lock()
-                                .await
-                                .send(AMsg::Text(t.as_str().to_string().into()))
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        TMsg::Binary(b) => {
-                            if b2c_client_write
-                                .lock()
-                                .await
-                                .send(AMsg::Binary(b.to_vec().into()))
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        TMsg::Ping(p) => {
-                            // Respond to backend ping immediately so LiveKit
-                            // does not mark the signaling socket stale while idle.
-                            if b2c_backend_write
-                                .lock()
-                                .await
-                                .send(TMsg::Pong(p))
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        TMsg::Pong(_) => {
-                            // Backend pong observed; nothing to forward.
-                        }
-                        TMsg::Close(_) => break,
-                        TMsg::Frame(_) => continue,
-                    }
+            let msg = match backend_read.next().await {
+                Some(Ok(m)) => m,
+                Some(Err(e)) => {
+                    tracing::debug!("LiveKit WS proxy[{}]: backend read error: {}", conn_id, e);
+                    break;
                 }
-                _ = keepalive.tick() => {
-                    // Ping the LiveKit backend to keep the connection alive.
+                None => {
+                    tracing::debug!("LiveKit WS proxy[{}]: backend socket closed", conn_id);
+                    break;
+                }
+            };
+
+            if let TMsg::Close(ref frame) = msg {
+                if let Some(frame) = frame {
+                    tracing::debug!(
+                        "LiveKit WS proxy[{}]: backend sent close code={} reason={}",
+                        conn_id,
+                        frame.code,
+                        frame.reason
+                    );
+                } else {
+                    tracing::debug!("LiveKit WS proxy[{}]: backend sent close frame", conn_id);
+                }
+            }
+
+            match msg {
+                TMsg::Ping(payload) => {
+                    // Heartbeats are hop-by-hop. Respond directly to LiveKit
+                    // so backend ping timeout cannot depend on client behavior.
                     if b2c_backend_write
                         .lock()
                         .await
-                        .send(TMsg::Ping(vec![].into()))
+                        .send(TMsg::Pong(payload))
                         .await
                         .is_err()
                     {
-                        tracing::debug!("LiveKit WS proxy: backend keepalive ping failed");
+                        tracing::debug!(
+                            "LiveKit WS proxy[{}]: failed to reply pong to backend ping",
+                            conn_id
+                        );
                         break;
                     }
                 }
+                TMsg::Pong(_) => {
+                    // Backend pong observed; no forwarding needed.
+                }
+                TMsg::Text(_) | TMsg::Binary(_) => {
+                    let Some(mapped) = tungstenite_to_axum_message(msg) else {
+                        continue;
+                    };
+                    if b2c_client_write.lock().await.send(mapped).await.is_err() {
+                        tracing::debug!(
+                            "LiveKit WS proxy[{}]: failed to forward backend frame to client",
+                            conn_id
+                        );
+                        break;
+                    }
+                }
+                TMsg::Close(_) => {
+                    let Some(mapped) = tungstenite_to_axum_message(msg) else {
+                        break;
+                    };
+                    let _ = b2c_client_write.lock().await.send(mapped).await;
+                    break;
+                }
+                TMsg::Frame(_) => continue,
             }
         }
-        let _ = b2c_client_write.lock().await.send(AMsg::Close(None)).await;
-        cancel_b2c.cancel();
+        let _ = b2c_client_write.lock().await.close().await;
     });
 
     // Wait for both tasks to finish. The cancellation token ensures that
     // when one side exits, the other gets a cooperative shutdown signal
     // and sends a proper close frame before exiting.
     let _ = tokio::join!(c2b, b2c);
-    tracing::debug!("LiveKit WS proxy disconnected from {}", redacted_target);
+    tracing::debug!(
+        "LiveKit WS proxy[{}]: disconnected from {}",
+        conn_id,
+        redacted_target
+    );
 }
 
 async fn handle_http(state: AppState, req: Request) -> Response {

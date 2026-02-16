@@ -83,6 +83,38 @@ function getPreferredServerBaseUrl(): string | null {
   return getStoredServerUrl();
 }
 
+function toLivekitProxyUrlFromHttpBase(baseUrl: string): string | null {
+  try {
+    const parsed = new URL(baseUrl);
+    const wsScheme = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsScheme}//${parsed.host}/livekit`;
+  } catch {
+    return null;
+  }
+}
+
+function getWindowOriginLivekitUrl(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  if (!host) {
+    return null;
+  }
+  return `${wsScheme}//${host}/livekit`;
+}
+
+function buildLivekitConnectCandidates(serverReturnedUrl: string): string[] {
+  const preferredBase = getPreferredServerBaseUrl();
+  const preferredUrl = preferredBase ? toLivekitProxyUrlFromHttpBase(preferredBase) : null;
+  const serverNormalized = normalizeLivekitUrlFromServerValue(serverReturnedUrl);
+  const candidates = [getWindowOriginLivekitUrl(), preferredUrl, serverNormalized].filter(
+    (value): value is string => Boolean(value)
+  );
+  return Array.from(new Set(candidates));
+}
+
 /**
  * Build the LiveKit proxy URL from the client's own server connection.
  *
@@ -94,16 +126,8 @@ function getPreferredServerBaseUrl(): string | null {
  *   - The /livekit proxy path
  */
 function normalizeLivekitUrl(serverReturnedUrl: string): string {
-  // 1. Prefer deriving from the active server connection URL.
-  const preferredBase = getPreferredServerBaseUrl();
-  if (preferredBase) {
-    try {
-      const parsed = new URL(preferredBase);
-      const wsScheme = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${wsScheme}//${parsed.host}/livekit`;
-    } catch { /* fall through to legacy normalization */ }
-  }
-  return normalizeLivekitUrlFromServerValue(serverReturnedUrl);
+  const candidates = buildLivekitConnectCandidates(serverReturnedUrl);
+  return candidates[0] ?? normalizeLivekitUrlFromServerValue(serverReturnedUrl);
 }
 
 function normalizeLivekitUrlFromServerValue(serverReturnedUrl: string): string {
@@ -131,26 +155,15 @@ function normalizeLivekitUrlFromServerValue(serverReturnedUrl: string): string {
   }
 }
 
-async function connectRoomWithTimeout(
-  room: Room,
-  url: string,
-  token: string,
-  timeoutMs: number
-): Promise<void> {
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutHandle = setTimeout(() => {
-      reject(new Error(`LiveKit connect timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  try {
-    await Promise.race([
-      room.connect(url, token, LIVEKIT_CONNECT_OPTIONS),
-      timeoutPromise,
-    ]);
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
+function isTransientVoiceConnectError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('signal connection') ||
+    normalized.includes('websocket') ||
+    normalized.includes('timed out') ||
+    normalized.includes('livekit') ||
+    normalized.includes('connection')
+  );
 }
 
 const attachedRemoteAudioElements = new Map<string, HTMLAudioElement>();
@@ -186,13 +199,13 @@ let pendingDisconnect: Promise<void> | null = null;
 let pendingDisconnectStartedAt = 0;
 const DISCONNECT_WAIT_ON_JOIN_MS = 5_000;
 const DISCONNECT_WAIT_ON_LEAVE_MS = 600;
-const MIN_DISCONNECT_QUIET_PERIOD_MS = 1_200;
+const MIN_DISCONNECT_QUIET_PERIOD_MS = 2_500;
 const LIVEKIT_CONNECT_OPTIONS = {
   maxRetries: 4,
   websocketTimeout: 45_000,
   peerConnectionTimeout: 50_000,
 } as const;
-const LIVEKIT_CONNECT_ATTEMPT_TIMEOUT_MS = 20_000;
+const LIVEKIT_CONNECT_ATTEMPTS_PER_CANDIDATE = 1;
 type MicUplinkState = 'idle' | 'sending' | 'stalled' | 'recovering' | 'muted' | 'no_track';
 let livekitLogConfigured = false;
 
@@ -1902,7 +1915,7 @@ interface VoiceStoreState {
   watchedStreamerId: string | null;
   previewStreamerId: string | null;
 
-  joinChannel: (channelId: string, guildId?: string) => Promise<void>;
+  joinChannel: (channelId: string, guildId?: string, internalRetryAttempt?: number) => Promise<void>;
   leaveChannel: () => Promise<void>;
   toggleMute: () => Promise<void>;
   toggleDeaf: () => Promise<void>;
@@ -1960,10 +1973,12 @@ export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
   watchedStreamerId: null,
   previewStreamerId: null,
 
-  joinChannel: async (channelId, guildId) => {
+  joinChannel: async (channelId, guildId, internalRetryAttempt = 0) => {
     configureLivekitLogging();
     const currentState = get();
     if (currentState.joining && currentState.joiningChannelId === channelId) {
+      // Keep join single-flight for a channel; overlapping joins can race the
+      // signaling engine and produce spurious websocket close errors.
       return;
     }
     const joinAttempt = ++joinAttemptSeq;
@@ -1991,9 +2006,14 @@ export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
         console.warn(
           `[voice] Disconnect still in-flight after ${DISCONNECT_WAIT_ON_JOIN_MS}ms; proceeding with join.`
         );
+      } else {
+        console.info(`[voice] Disconnect completed before join (age=${ageMs}ms).`);
       }
       const quietPeriodRemainingMs = Math.max(0, MIN_DISCONNECT_QUIET_PERIOD_MS - ageMs);
       if (quietPeriodRemainingMs > 0) {
+        console.info(
+          `[voice] Waiting ${quietPeriodRemainingMs}ms quiet period before LiveKit connect.`
+        );
         await new Promise<void>((resolve) => setTimeout(resolve, quietPeriodRemainingMs));
       }
     }
@@ -2055,12 +2075,8 @@ export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
           },
         },
       });
-      const normalizedUrl = normalizeLivekitUrl(data.url);
-      const serverNormalizedUrl = normalizeLivekitUrlFromServerValue(data.url);
-      const connectCandidates =
-        normalizedUrl === serverNormalizedUrl
-          ? [normalizedUrl]
-          : [normalizedUrl, serverNormalizedUrl];
+      const connectCandidates = buildLivekitConnectCandidates(data.url);
+      const normalizedUrl = connectCandidates[0] ?? normalizeLivekitUrlFromServerValue(data.url);
 
       // Read saved audio device preferences from user settings.
       const savedInputId = getSavedInputDeviceId();
@@ -2133,41 +2149,44 @@ export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
       console.log('[voice] Connecting to LiveKit at:', normalizedUrl);
       console.log('[voice] Server returned URL:', data.url, 'â†’ normalized:', normalizedUrl);
       if (connectCandidates.length > 1) {
-        console.log('[voice] LiveKit fallback URL candidate:', serverNormalizedUrl);
+        console.log('[voice] LiveKit fallback URL candidates:', connectCandidates.slice(1));
       }
       let connected = false;
       let lastConnectError: unknown = null;
-      for (let i = 0; i < connectCandidates.length; i += 1) {
+      const totalAttempts = connectCandidates.length * LIVEKIT_CONNECT_ATTEMPTS_PER_CANDIDATE;
+      let attemptCounter = 0;
+      outer: for (let i = 0; i < connectCandidates.length; i += 1) {
         const candidate = connectCandidates[i]!;
-        const attempt = i + 1;
-        console.info(
-          `[voice] LiveKit connect attempt ${attempt}/${connectCandidates.length}: ${candidate}`
-        );
-        try {
-          await connectRoomWithTimeout(
-            room,
-            candidate,
-            data.token,
-            LIVEKIT_CONNECT_ATTEMPT_TIMEOUT_MS
-          );
-          connected = true;
-          if (i > 0) {
-            console.info('[voice] LiveKit connected after fallback URL retry.');
-          }
-          break;
-        } catch (connectErr) {
-          lastConnectError = connectErr;
-          console.warn(
-            `[voice] LiveKit connect attempt ${attempt}/${connectCandidates.length} failed:`,
-            connectErr
+        for (let retry = 0; retry < LIVEKIT_CONNECT_ATTEMPTS_PER_CANDIDATE; retry += 1) {
+          attemptCounter += 1;
+          const retryLabel =
+            LIVEKIT_CONNECT_ATTEMPTS_PER_CANDIDATE > 1
+              ? ` (candidate ${i + 1}/${connectCandidates.length}, retry ${retry + 1}/${LIVEKIT_CONNECT_ATTEMPTS_PER_CANDIDATE})`
+              : '';
+          console.info(
+            `[voice] LiveKit connect attempt ${attemptCounter}/${totalAttempts}${retryLabel}: ${candidate}`
           );
           try {
-            await room.disconnect();
-          } catch {
-            // ignore disconnect errors between attempts
-          }
-          if (attempt < connectCandidates.length) {
-            await delay(250);
+            await room.connect(candidate, data.token, LIVEKIT_CONNECT_OPTIONS);
+            connected = true;
+            if (attemptCounter > 1) {
+              console.info('[voice] LiveKit connected after retry.');
+            }
+            break outer;
+          } catch (connectErr) {
+            lastConnectError = connectErr;
+            console.warn(
+              `[voice] LiveKit connect attempt ${attemptCounter}/${totalAttempts} failed:`,
+              connectErr
+            );
+            try {
+              await room.disconnect();
+            } catch {
+              // ignore disconnect errors between attempts
+            }
+            if (attemptCounter < totalAttempts) {
+              await delay(300);
+            }
           }
         }
       }
@@ -2261,6 +2280,7 @@ export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
         channelId,
         isLatestJoinAttempt,
         joinedServer,
+        internalRetryAttempt,
         message,
       });
       if (!isLatestJoinAttempt) {
@@ -2286,6 +2306,21 @@ export const useVoiceStore = create<VoiceStoreState>()((set, get) => ({
         await voiceApi.leaveChannel(channelId).catch((err) => {
           console.warn('[voice] rollback leave API error after failed join:', err);
         });
+      }
+      const shouldAutoRetry =
+        internalRetryAttempt < 1 &&
+        joinedServer &&
+        isTransientVoiceConnectError(message);
+      if (shouldAutoRetry) {
+        console.warn(
+          `[voice] Transient signaling failure detected; auto-retrying join once (attempt ${internalRetryAttempt + 2}/2).`
+        );
+        set({
+          joining: false,
+          joiningChannelId: null,
+        });
+        await delay(500);
+        return get().joinChannel(channelId, guildId, internalRetryAttempt + 1);
       }
       suppressVoiceForStream(false);
       set({

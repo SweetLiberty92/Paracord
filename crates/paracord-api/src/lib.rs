@@ -739,11 +739,18 @@ async fn rate_limit_middleware(req: Request, next: Next) -> Response {
     const COUNTER_TTL_SECONDS: i64 = 600;
     const COUNTER_CLEANUP_LIMIT: i64 = 1024;
 
+    let path = req.uri().path().to_string();
+    if path == "/livekit" || path.starts_with("/livekit/") {
+        // LiveKit signaling is authenticated by its own token and is highly
+        // latency-sensitive. Keeping it out of the DB-backed HTTP rate limiter
+        // avoids intermittent join stalls under database contention.
+        return next.run(req).await;
+    }
+
     let request_index = REQUEST_COUNT
         .fetch_add(1, Ordering::Relaxed)
         .saturating_add(1);
     let now = chrono::Utc::now().timestamp();
-    let path = req.uri().path().to_string();
     let is_auth_path = path.starts_with("/api/v1/auth/");
     let trust_proxy = std::env::var("PARACORD_TRUST_PROXY")
         .ok()
