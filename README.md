@@ -208,13 +208,174 @@ The server auto-generates `config/paracord.toml` on first run with:
 
 All settings can be overridden via environment variables prefixed with `PARACORD_`. See `paracord.example.toml` in the server package for the full reference.
 
+<details>
+<summary><h3>Using PostgreSQL Instead of SQLite</h3></summary>
+
+Paracord uses SQLite by default — zero setup, single file, works out of the box. But if you're running a larger server or want the operational tooling that comes with a traditional database, Paracord also supports PostgreSQL as a drop-in alternative. All features work identically on both backends.
+
+#### 1. Install PostgreSQL
+
+**Windows:** Download and run the installer from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/). Use the defaults and remember the password you set for the `postgres` user.
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+sudo systemctl start postgresql
+```
+
+**Docker (standalone):**
+```bash
+docker run -d --name paracord-postgres \
+  -e POSTGRES_USER=paracord \
+  -e POSTGRES_PASSWORD=changeme \
+  -e POSTGRES_DB=paracord \
+  -p 5432:5432 \
+  -v pgdata:/var/lib/postgresql/data \
+  postgres:16-alpine
+```
+
+PostgreSQL 12 or newer is required. Version 16 is recommended.
+
+#### 2. Create a Database and User
+
+Skip this step if you used the Docker command above (it creates both automatically).
+
+Open a PostgreSQL shell:
+```bash
+# Linux
+sudo -u postgres psql
+
+# Windows (from the PostgreSQL install directory)
+psql -U postgres
+```
+
+Then run:
+```sql
+CREATE USER paracord WITH PASSWORD 'pick-a-strong-password';
+CREATE DATABASE paracord OWNER paracord;
+```
+
+Type `\q` to exit.
+
+#### 3. Point Paracord at PostgreSQL
+
+Open your `paracord.toml` (auto-generated on first server run in the `config/` directory) and update the `[database]` section:
+
+```toml
+[database]
+engine = "postgres"
+url = "postgresql://paracord:pick-a-strong-password@localhost:5432/paracord"
+max_connections = 20
+```
+
+That's the minimum needed. The `engine` field tells Paracord which migration track to use, and the `url` is a standard PostgreSQL connection string.
+
+**Or use environment variables** (useful for Docker / CI):
+```bash
+export PARACORD_DATABASE_ENGINE=postgres
+export PARACORD_DATABASE_URL="postgresql://paracord:pick-a-strong-password@localhost:5432/paracord"
+```
+
+Environment variables always override the config file.
+
+#### 4. Start the Server
+
+```bash
+./paracord-server --config config/paracord.toml
+```
+
+Paracord runs its PostgreSQL migration track automatically on startup. You'll see:
+```
+migrations: applied successfully
+```
+
+That's it — you're running on PostgreSQL.
+
+#### 5. Docker Compose with PostgreSQL
+
+If you're using Docker Compose, add a `postgres` service and update the Paracord environment:
+
+```yaml
+services:
+  paracord:
+    # ... existing paracord config ...
+    environment:
+      - PARACORD_DATABASE_ENGINE=postgres
+      - PARACORD_DATABASE_URL=postgresql://paracord:changeme@postgres:5432/paracord
+      - PARACORD_DATABASE_MAX_CONNECTIONS=20
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=paracord
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=paracord
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+```
+
+#### Optional Tuning
+
+These are safe to leave at defaults but useful for production:
+
+```toml
+[database]
+engine = "postgres"
+url = "postgresql://paracord:password@localhost:5432/paracord?sslmode=prefer"
+max_connections = 20
+
+# Kill any single query that runs longer than 30 seconds (0 = no limit)
+statement_timeout_secs = 30
+
+# Kill transactions that sit idle for over 60 seconds (0 = no limit)
+idle_in_transaction_timeout_secs = 60
+```
+
+Paracord also automatically sets `lock_timeout = 10s` and `timezone = UTC` on every connection.
+
+**Environment variable equivalents:**
+| Config Key | Environment Variable |
+|---|---|
+| `engine` | `PARACORD_DATABASE_ENGINE` |
+| `url` | `PARACORD_DATABASE_URL` |
+| `max_connections` | `PARACORD_DATABASE_MAX_CONNECTIONS` |
+| `statement_timeout_secs` | `PARACORD_DATABASE_STATEMENT_TIMEOUT_SECS` |
+| `idle_in_transaction_timeout_secs` | `PARACORD_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_SECS` |
+
+#### Connection String Reference
+
+| Scenario | URL |
+|---|---|
+| Local, no password | `postgresql://localhost:5432/paracord` |
+| Local with auth | `postgresql://user:password@localhost:5432/paracord` |
+| SSL preferred (default) | `postgresql://user:password@host:5432/paracord?sslmode=prefer` |
+| SSL required | `postgresql://user:password@host:5432/paracord?sslmode=require` |
+| Remote server | `postgresql://user:password@db.example.com:5432/paracord?sslmode=require` |
+
+#### Backups
+
+When running on PostgreSQL, Paracord's built-in backup system uses `pg_dump` and `pg_restore` instead of SQLite's `.backup` command. Backups can be triggered from the admin settings panel or the API, and work the same way regardless of which database backend you're using.
+
+#### Migrating from SQLite to PostgreSQL
+
+There is no built-in migration tool to move data from an existing SQLite database to PostgreSQL. If you need to migrate, export your data manually (e.g. via SQL dump scripts) before switching the engine. For new deployments, just start with PostgreSQL from the beginning if you know you'll want it.
+
+</details>
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Server | Rust (axum, tokio, SQLx) |
 | Client | Tauri v2 + React 19 + TypeScript |
-| Database | SQLite (embedded, zero-config) + optional SQLCipher encryption |
+| Database | SQLite (default, zero-config) or PostgreSQL + optional SQLCipher encryption |
 | Voice/Video | LiveKit SFU (bundled) |
 | State | Zustand v5 |
 | Styling | Tailwind CSS v4 |
@@ -236,7 +397,7 @@ All settings can be overridden via environment variables prefixed with `PARACORD
 ## Development
 
 ### Prerequisites
-- [Rust 1.85+](https://rustup.rs/)
+- [Rust 1.88+](https://rustup.rs/)
 - [Node.js 22+](https://nodejs.org/)
 
 ### Running Locally
