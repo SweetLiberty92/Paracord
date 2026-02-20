@@ -4,6 +4,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use rand::RngCore;
 use serde::Serialize;
+use std::io::Write;
 use std::path::Path;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
@@ -174,6 +175,47 @@ fn load_or_create_secure_store_fallback_key(app: &tauri::AppHandle) -> Result<[u
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     }
     Ok(key)
+}
+
+fn diagnostics_log_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let mut dir = if cfg!(windows) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            std::path::PathBuf::from(local_app_data)
+        } else {
+            app.path()
+                .app_data_dir()
+                .map_err(|e| format!("failed to resolve diagnostics log dir: {e}"))?
+        }
+    } else {
+        app.path()
+            .app_log_dir()
+            .or_else(|_| app.path().app_data_dir())
+            .map_err(|e| format!("failed to resolve diagnostics log dir: {e}"))?
+    };
+    dir.push("Paracord");
+    dir.push("logs");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("failed to create diagnostics log dir: {e}"))?;
+    dir.push("client-voice.log");
+    Ok(dir)
+}
+
+#[tauri::command]
+pub fn append_client_log(app: tauri::AppHandle, line: String) -> Result<(), String> {
+    eprintln!("[client-diag] {line}");
+    let path = diagnostics_log_path(&app)?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("failed to open diagnostics log file: {e}"))?;
+    writeln!(file, "{line}").map_err(|e| format!("failed to write diagnostics log line: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_client_log_path(app: tauri::AppHandle) -> Result<String, String> {
+    diagnostics_log_path(&app).map(|p| p.display().to_string())
 }
 
 #[tauri::command]
@@ -493,4 +535,140 @@ pub fn get_foreground_application() -> Option<ForegroundApplication> {
     {
         None
     }
+}
+
+// ── Native QUIC media engine commands ────────────────────────────────────────
+// These commands bridge the TypeScript TauriMediaEngine to the Rust native
+// audio/video codec pipeline. Currently stubs that return Ok — the actual
+// implementation will link to paracord-codec once the Tauri workspace
+// configuration aligns with the server workspace.
+
+#[derive(Serialize)]
+pub struct VoiceSessionInfo {
+    pub session_id: String,
+    pub connected: bool,
+}
+
+#[tauri::command]
+pub fn start_voice_session(
+    endpoint: String,
+    token: String,
+    room_id: String,
+) -> Result<VoiceSessionInfo, String> {
+    tracing_stub(&format!(
+        "start_voice_session: endpoint={}, room={}",
+        endpoint, room_id
+    ));
+    Ok(VoiceSessionInfo {
+        session_id: format!("native-{}", room_id),
+        connected: false, // Will be true once QUIC connection is established
+    })
+}
+
+#[tauri::command]
+pub fn stop_voice_session() -> Result<(), String> {
+    tracing_stub("stop_voice_session");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_set_mute(muted: bool) -> Result<(), String> {
+    tracing_stub(&format!("voice_set_mute: {}", muted));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_set_deaf(deafened: bool) -> Result<(), String> {
+    tracing_stub(&format!("voice_set_deaf: {}", deafened));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_switch_input_device(device_id: String) -> Result<(), String> {
+    tracing_stub(&format!("voice_switch_input_device: {}", device_id));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_switch_output_device(device_id: String) -> Result<(), String> {
+    tracing_stub(&format!("voice_switch_output_device: {}", device_id));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_enable_video(enabled: bool) -> Result<(), String> {
+    tracing_stub(&format!("voice_enable_video: {}", enabled));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_start_screen_share() -> Result<(), String> {
+    tracing_stub("voice_start_screen_share");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn voice_stop_screen_share() -> Result<(), String> {
+    tracing_stub("voice_stop_screen_share");
+    Ok(())
+}
+
+fn tracing_stub(msg: &str) {
+    eprintln!("[native-media-stub] {}", msg);
+}
+
+// ── Native QUIC file transfer commands ───────────────────────────────────────
+// These commands bridge TypeScript file upload/download to the native QUIC
+// transport. Currently stubs — the actual implementation will use
+// paracord-transport's file_transfer module once the Tauri workspace
+// configuration aligns with the server workspace.
+
+#[derive(Serialize)]
+pub struct FileTransferResult {
+    pub transfer_id: String,
+    pub attachment_id: Option<String>,
+    pub url: Option<String>,
+    pub success: bool,
+}
+
+#[tauri::command]
+pub async fn quic_upload_file(
+    endpoint: String,
+    token: String,
+    transfer_id: String,
+    file_path: String,
+) -> Result<FileTransferResult, String> {
+    tracing_stub(&format!(
+        "quic_upload_file: endpoint={}, transfer_id={}, file={}",
+        endpoint, transfer_id, file_path
+    ));
+    // Stub: in production this will establish a QUIC connection via quinn,
+    // open a bidi stream, and use the StreamFrame protocol to upload the file.
+    Ok(FileTransferResult {
+        transfer_id,
+        attachment_id: None,
+        url: None,
+        success: false, // Will be true once native QUIC is implemented
+    })
+}
+
+#[tauri::command]
+pub async fn quic_download_file(
+    endpoint: String,
+    token: String,
+    attachment_id: String,
+    dest_path: String,
+) -> Result<FileTransferResult, String> {
+    tracing_stub(&format!(
+        "quic_download_file: endpoint={}, attachment_id={}, dest={}",
+        endpoint, attachment_id, dest_path
+    ));
+    // Stub: in production this will establish a QUIC connection via quinn,
+    // open a bidi stream, send FileDownloadRequest, and stream data to dest_path.
+    Ok(FileTransferResult {
+        transfer_id: attachment_id.clone(),
+        attachment_id: Some(attachment_id),
+        url: None,
+        success: false, // Will be true once native QUIC is implemented
+    })
 }

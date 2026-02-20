@@ -63,7 +63,7 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
   const [showDmPicker, setShowDmPicker] = useState(false);
   const relationships = useRelationshipStore((s) => s.relationships);
   const fetchRelationships = useRelationshipStore((s) => s.fetchRelationships);
-  const { connected, channelId: activeVoiceChannelId, joinChannel, leaveChannel, selfMute, selfDeaf, toggleMute, toggleDeaf } = useVoice();
+  const { connected, channelId: activeVoiceChannelId, joinChannel, selfMute, selfDeaf, toggleMute, toggleDeaf } = useVoice();
   const channelParticipants = useVoiceStore((s) => s.channelParticipants);
   const speakingUsers = useVoiceStore((s) => s.speakingUsers);
 
@@ -150,7 +150,7 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
     if (gId) {
       if ((channel.type === 2 || channel.channel_type === 2) && gId) {
         if (connected && activeVoiceChannelId === channel.id) {
-          void leaveChannel();
+          // Already in this voice channel — just navigate back to it.
         } else {
           // Do not block navigation on RTC connect attempts, which can take
           // a long time or fail in degraded network environments.
@@ -531,6 +531,25 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
       )}
 
       <div className="flex-1 overflow-y-auto px-3 pt-4 scrollbar-thin">
+        {/* Server Hub Direct Link */}
+        <button
+          onClick={() => navigate(`/app/guilds/${currentGuild.id}`)}
+          className={cn(
+            'architect-nav-item group relative mb-4 mt-1 cursor-pointer px-3.5 py-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded-xl',
+            location.pathname === `/app/guilds/${currentGuild.id}`
+              ? 'architect-nav-item-active text-black'
+              : 'text-text-secondary hover:text-text-primary'
+          )}
+        >
+          <Home size={16} className={cn('mr-1.5', location.pathname === `/app/guilds/${currentGuild.id}` ? 'text-black/70' : 'text-text-muted group-hover:text-text-secondary')} />
+          <span className={cn(
+            'truncate text-[15px]',
+            location.pathname === `/app/guilds/${currentGuild.id}` ? 'text-black font-bold' : 'font-semibold text-text-secondary group-hover:text-text-primary'
+          )}>
+            Server Hub
+          </span>
+        </button>
+
         {categoryGroups.map((cat) => (
           <div key={cat.id} className="mb-4">
             {/* Category header — shown for both real and virtual groups (except __uncategorized__) */}
@@ -616,7 +635,7 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
                       }
                     }}
                     className={cn(
-                      'architect-nav-item group relative mb-1 cursor-pointer px-3 py-2.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary',
+                      'architect-nav-item group relative mb-1.5 cursor-pointer px-3.5 py-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary rounded-xl',
                       isSelected
                         ? 'architect-nav-item-active text-black'
                         : 'text-text-secondary hover:text-text-primary'

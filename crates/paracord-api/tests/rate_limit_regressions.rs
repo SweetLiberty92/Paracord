@@ -62,6 +62,14 @@ impl TestHarness {
                 database_url: "sqlite::memory:".to_string(),
                 federation_max_events_per_peer_per_minute: None,
                 federation_max_user_creates_per_peer_per_hour: None,
+                native_media_enabled: false,
+                native_media_port: 8443,
+                native_media_max_participants: 50,
+                native_media_e2ee_required: false,
+                max_guild_storage_quota: 0,
+                federation_file_cache_enabled: false,
+                federation_file_cache_max_size: 0,
+                federation_file_cache_ttl_hours: 0,
             },
             runtime: Arc::new(RwLock::new(RuntimeSettings::default())),
             voice: Arc::new(VoiceManager::new(livekit)),
@@ -77,6 +85,7 @@ impl TestHarness {
             user_presences: Arc::new(RwLock::new(HashMap::new())),
             permission_cache: build_permission_cache(),
             federation_service: None,
+            native_media: None,
         };
 
         let app = paracord_api::build_router().with_state(state);

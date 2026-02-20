@@ -7,7 +7,7 @@ import type {
   SendMessageRequest,
 } from '../types';
 import { channelApi } from '../api/channels';
-import { extractApiError } from '../api/client';
+import { apiClient, extractApiError } from '../api/client';
 import { DEFAULT_MESSAGE_FETCH_LIMIT } from '../lib/constants';
 import { decryptDmMessage, encryptDmMessageV2 } from '../lib/dmE2ee';
 import { hasUnlockedPrivateKey, withUnlockedPrivateKey } from '../lib/accountSession';
@@ -200,48 +200,54 @@ export const useMessageStore = create<MessageState>()((set, get) => ({
     if (get().loading[channelId]) return;
     set((state) => ({ loading: { ...state.loading, [channelId]: true } }));
     const MAX_RETRIES = 2;
-    const RETRY_DELAY = 1500;
+    const RETRY_DELAY = 300;
+    // Use a shorter timeout per request so stale HTTP/2 connections
+    // don't block message loading for 15s × 3 retries (~45s).
+    // With 5s per attempt the worst case is 5 + 0.3 + 5 + 0.6 + 5 ≈ 16s.
+    const REQUEST_TIMEOUT = 5_000;
     let lastErr: unknown;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        if (attempt > 0) {
-          await new Promise((r) => setTimeout(r, RETRY_DELAY * attempt));
-        }
-        const { data } = await channelApi.getMessages(channelId, {
-          limit: DEFAULT_MESSAGE_FETCH_LIMIT,
-          ...params,
-        });
-        const decrypted = await decryptMessagesForChannel(channelId, data);
-        if (!params?.before) {
-          usePollStore.getState().clearPollsForChannel(channelId);
-        }
-        for (const message of decrypted) {
-          if (message.poll) {
-            usePollStore.getState().upsertPoll(message.poll);
+    try {
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY * attempt));
           }
+          const { data } = await apiClient.get<Message[]>(
+            `/channels/${channelId}/messages`,
+            { params: { limit: DEFAULT_MESSAGE_FETCH_LIMIT, ...params }, timeout: REQUEST_TIMEOUT },
+          );
+          const decrypted = await decryptMessagesForChannel(channelId, data);
+          if (!params?.before) {
+            usePollStore.getState().clearPollsForChannel(channelId);
+          }
+          for (const message of decrypted) {
+            if (message.poll) {
+              usePollStore.getState().upsertPoll(message.poll);
+            }
+          }
+          set((state) => {
+            const existing = params?.before ? state.messages[channelId] || [] : [];
+            // API returns newest first (ORDER BY id DESC); reverse to
+            // chronological order (oldest at top, newest at bottom).
+            const sorted = [...decrypted].reverse();
+            const merged = params?.before ? [...sorted, ...existing] : sorted;
+            return {
+              messages: { ...state.messages, [channelId]: merged },
+              hasMore: {
+                ...state.hasMore,
+                [channelId]: decrypted.length >= DEFAULT_MESSAGE_FETCH_LIMIT,
+              },
+            };
+          });
+          return;
+        } catch (err) {
+          lastErr = err;
         }
-        set((state) => {
-          const existing = params?.before ? state.messages[channelId] || [] : [];
-          // API returns newest first (ORDER BY id DESC); reverse to
-          // chronological order (oldest at top, newest at bottom).
-          const sorted = [...decrypted].reverse();
-          const merged = params?.before ? [...sorted, ...existing] : sorted;
-          return {
-            messages: { ...state.messages, [channelId]: merged },
-            hasMore: {
-              ...state.hasMore,
-              [channelId]: decrypted.length >= DEFAULT_MESSAGE_FETCH_LIMIT,
-            },
-          };
-        });
-        set((state) => ({ loading: { ...state.loading, [channelId]: false } }));
-        return;
-      } catch (err) {
-        lastErr = err;
       }
+      toast.error(`Failed to load messages: ${extractApiError(lastErr)}`);
+    } finally {
+      set((state) => ({ loading: { ...state.loading, [channelId]: false } }));
     }
-    toast.error(`Failed to load messages: ${extractApiError(lastErr)}`);
-    set((state) => ({ loading: { ...state.loading, [channelId]: false } }));
   },
 
   sendMessage: async (channelId, content, referencedMessageId, attachmentIds) => {

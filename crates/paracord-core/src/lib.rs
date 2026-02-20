@@ -15,6 +15,9 @@ use paracord_db::DbPool;
 use paracord_federation::FederationService;
 use paracord_media::{Storage, StorageManager, VoiceManager};
 use paracord_models::permissions::Permissions;
+use paracord_relay::room::MediaRoomManager;
+use paracord_relay::speaker::SpeakerDetector;
+use paracord_transport::endpoint::MediaEndpoint;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
@@ -86,6 +89,16 @@ pub struct AppState {
     pub permission_cache: moka::future::Cache<PermissionCacheKey, Permissions>,
     /// Pre-built federation service (avoids re-parsing env vars on every request).
     pub federation_service: Option<FederationService>,
+    /// Native QUIC media relay state (None when using LiveKit).
+    pub native_media: Option<NativeMediaState>,
+}
+
+/// State for the native QUIC-based media server.
+#[derive(Clone)]
+pub struct NativeMediaState {
+    pub rooms: Arc<MediaRoomManager>,
+    pub speaker_detector: Arc<SpeakerDetector>,
+    pub endpoint: Arc<MediaEndpoint>,
 }
 
 #[derive(Clone, Debug)]
@@ -118,4 +131,20 @@ pub struct AppConfig {
     pub federation_max_events_per_peer_per_minute: Option<u32>,
     /// Per-peer rate limit for remote user creation (per hour). None = no limit.
     pub federation_max_user_creates_per_peer_per_hour: Option<u32>,
+    /// Whether the native QUIC media server is enabled.
+    pub native_media_enabled: bool,
+    /// UDP port for the native QUIC media endpoint.
+    pub native_media_port: u16,
+    /// Maximum participants per voice room (native media).
+    pub native_media_max_participants: u32,
+    /// Whether E2EE is required for native media sessions.
+    pub native_media_e2ee_required: bool,
+    /// Maximum storage quota per guild in bytes.
+    pub max_guild_storage_quota: u64,
+    /// Whether federation file caching is enabled.
+    pub federation_file_cache_enabled: bool,
+    /// Maximum size of the federation file cache in bytes.
+    pub federation_file_cache_max_size: u64,
+    /// TTL for cached federation files in hours.
+    pub federation_file_cache_ttl_hours: u64,
 }

@@ -47,6 +47,8 @@ pub struct Config {
     #[serde(default)]
     pub livekit: LiveKitConfig,
     #[serde(default)]
+    pub voice: VoiceConfig,
+    #[serde(default)]
     pub federation: FederationConfig,
     #[serde(default)]
     pub network: NetworkConfig,
@@ -156,6 +158,8 @@ pub struct StorageConfig {
     pub path: String,
     #[serde(default = "default_max_upload_size")]
     pub max_upload_size: u64,
+    #[serde(default = "default_max_guild_storage_quota")]
+    pub max_guild_storage_quota: u64,
 }
 
 impl Default for StorageConfig {
@@ -164,6 +168,7 @@ impl Default for StorageConfig {
             storage_type: default_storage_type(),
             path: default_storage_path(),
             max_upload_size: default_max_upload_size(),
+            max_guild_storage_quota: default_max_guild_storage_quota(),
         }
     }
 }
@@ -176,6 +181,38 @@ pub struct MediaConfig {
     pub max_file_size: u64,
     #[serde(default = "default_p2p_threshold")]
     pub p2p_threshold: u64,
+}
+
+/// Native QUIC-based voice/video media server configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VoiceConfig {
+    /// Enable the native QUIC media server (replaces LiveKit when true).
+    #[serde(default = "default_false")]
+    pub native_media: bool,
+    /// UDP port for the QUIC media endpoint.
+    #[serde(default = "default_voice_port")]
+    pub port: u16,
+    /// Maximum participants per voice room.
+    #[serde(default = "default_voice_max_participants")]
+    pub max_participants_per_room: u32,
+    /// Opus bitrate in bits/s.
+    #[serde(default = "default_voice_audio_bitrate")]
+    pub audio_bitrate: u32,
+    /// Require E2EE sender key exchange for all media sessions.
+    #[serde(default = "default_true")]
+    pub e2ee_required: bool,
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            native_media: false,
+            port: default_voice_port(),
+            max_participants_per_room: default_voice_max_participants(),
+            audio_bitrate: default_voice_audio_bitrate(),
+            e2ee_required: true,
+        }
+    }
 }
 
 impl Default for MediaConfig {
@@ -387,6 +424,12 @@ pub struct FederationConfig {
     pub max_events_per_peer_per_minute: Option<u32>,
     #[serde(default = "default_max_user_creates_per_peer_per_hour")]
     pub max_user_creates_per_peer_per_hour: Option<u32>,
+    #[serde(default = "default_false")]
+    pub file_cache_enabled: bool,
+    #[serde(default = "default_federation_file_cache_max_size")]
+    pub file_cache_max_size: u64,
+    #[serde(default = "default_federation_file_cache_ttl_hours")]
+    pub file_cache_ttl_hours: u64,
 }
 
 impl Default for FederationConfig {
@@ -398,6 +441,9 @@ impl Default for FederationConfig {
             allow_discovery: false,
             max_events_per_peer_per_minute: default_max_events_per_peer_per_minute(),
             max_user_creates_per_peer_per_hour: default_max_user_creates_per_peer_per_hour(),
+            file_cache_enabled: false,
+            file_cache_max_size: default_federation_file_cache_max_size(),
+            file_cache_ttl_hours: default_federation_file_cache_ttl_hours(),
         }
     }
 }
@@ -493,6 +539,15 @@ fn default_livekit_url() -> String {
 fn default_livekit_http_url() -> String {
     "http://127.0.0.1:7880".into()
 }
+fn default_voice_port() -> u16 {
+    8443
+}
+fn default_voice_max_participants() -> u32 {
+    50
+}
+fn default_voice_audio_bitrate() -> u32 {
+    96_000
+}
 fn default_upnp_lease() -> u32 {
     3600
 }
@@ -537,6 +592,15 @@ fn default_max_events_per_peer_per_minute() -> Option<u32> {
 }
 fn default_max_user_creates_per_peer_per_hour() -> Option<u32> {
     Some(100)
+}
+fn default_max_guild_storage_quota() -> u64 {
+    5_368_709_120 // 5GB
+}
+fn default_federation_file_cache_max_size() -> u64 {
+    1_073_741_824 // 1GB
+}
+fn default_federation_file_cache_ttl_hours() -> u64 {
+    168 // 7 days
 }
 fn default_backup_dir() -> String {
     "./data/backups".into()
@@ -1065,6 +1129,26 @@ impl Config {
         if let Ok(value) = std::env::var("PARACORD_FEDERATION_MAX_USER_CREATES_PER_PEER_PER_HOUR") {
             if let Ok(parsed) = value.parse::<u32>() {
                 config.federation.max_user_creates_per_peer_per_hour = Some(parsed);
+            }
+        }
+        if let Ok(value) = std::env::var("PARACORD_MAX_GUILD_STORAGE_QUOTA") {
+            if let Ok(parsed) = value.parse::<u64>() {
+                config.storage.max_guild_storage_quota = parsed;
+            }
+        }
+        if let Ok(value) = std::env::var("PARACORD_FEDERATION_FILE_CACHE_ENABLED") {
+            if let Ok(parsed) = value.parse::<bool>() {
+                config.federation.file_cache_enabled = parsed;
+            }
+        }
+        if let Ok(value) = std::env::var("PARACORD_FEDERATION_FILE_CACHE_MAX_SIZE") {
+            if let Ok(parsed) = value.parse::<u64>() {
+                config.federation.file_cache_max_size = parsed;
+            }
+        }
+        if let Ok(value) = std::env::var("PARACORD_FEDERATION_FILE_CACHE_TTL_HOURS") {
+            if let Ok(parsed) = value.parse::<u64>() {
+                config.federation.file_cache_ttl_hours = parsed;
             }
         }
         if let Ok(value) = std::env::var("PARACORD_RETENTION_ENABLED") {

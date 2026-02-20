@@ -387,6 +387,12 @@ class ConnectionManager {
         conn.ws.close();
         conn.ws = null;
       }
+      // Close stale EventSource before opening a new one to avoid
+      // overlapping SSE connections (which can cause ERR_CONNECTION_RESET).
+      if (conn.eventSource) {
+        conn.eventSource.close();
+        conn.eventSource = null;
+      }
       this.connectRealtimeSse(conn);
       return;
     }
@@ -785,14 +791,29 @@ class ConnectionManager {
       this.syncUiConnectionStatus();
       return;
     }
-    const delay = Math.min(1000 * Math.pow(2, Math.min(conn.reconnectAttempts, 5)), 30000);
+    // First retry is immediate (0ms) so intermittent TLS/SSE resets
+    // are invisible to the user.  Subsequent retries use exponential
+    // backoff starting at 1s up to 30s.
+    const attempt = conn.reconnectAttempts;
     conn.reconnectAttempts++;
-    conn.reconnectTimer = setTimeout(() => {
-      conn.reconnectTimer = null;
-      if (!conn.allowReconnect) return;
-      if (!this.isCurrentConnection(conn)) return;
-      this.connectRealtime(conn);
-    }, delay);
+    if (attempt === 0) {
+      // Immediate retry — use setTimeout(0) so the call stack unwinds
+      // but there is essentially no delay.
+      conn.reconnectTimer = setTimeout(() => {
+        conn.reconnectTimer = null;
+        if (!conn.allowReconnect) return;
+        if (!this.isCurrentConnection(conn)) return;
+        this.connectRealtime(conn);
+      }, 0);
+    } else {
+      const delay = Math.min(1000 * Math.pow(2, Math.min(attempt - 1, 5)), 30000);
+      conn.reconnectTimer = setTimeout(() => {
+        conn.reconnectTimer = null;
+        if (!conn.allowReconnect) return;
+        if (!this.isCurrentConnection(conn)) return;
+        this.connectRealtime(conn);
+      }, delay);
+    }
     this.syncUiConnectionStatus();
   }
 

@@ -476,7 +476,7 @@ async fn main() -> Result<()> {
         None
     };
 
-    let state = paracord_core::AppState {
+    let mut state = paracord_core::AppState {
         db,
         event_bus: paracord_core::events::EventBus::default(),
         runtime,
@@ -511,6 +511,14 @@ async fn main() -> Result<()> {
             federation_max_user_creates_per_peer_per_hour: config
                 .federation
                 .max_user_creates_per_peer_per_hour,
+            native_media_enabled: config.voice.native_media,
+            native_media_port: config.voice.port,
+            native_media_max_participants: config.voice.max_participants_per_room,
+            native_media_e2ee_required: config.voice.e2ee_required,
+            max_guild_storage_quota: config.storage.max_guild_storage_quota,
+            federation_file_cache_enabled: config.federation.file_cache_enabled,
+            federation_file_cache_max_size: config.federation.file_cache_max_size,
+            federation_file_cache_ttl_hours: config.federation.file_cache_ttl_hours,
         },
         voice,
         storage,
@@ -519,7 +527,46 @@ async fn main() -> Result<()> {
         user_presences: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         permission_cache: paracord_core::build_permission_cache(),
         federation_service,
+        native_media: None,
     };
+
+    // ── Native QUIC media server ─────────────────────────────────────────────
+    if config.voice.native_media {
+        use paracord_transport::endpoint::{generate_self_signed_cert, MediaEndpoint};
+
+        let media_addr: std::net::SocketAddr =
+            format!("0.0.0.0:{}", config.voice.port).parse()?;
+        match generate_self_signed_cert().and_then(|tls| MediaEndpoint::bind(media_addr, tls)) {
+            Ok(endpoint) => {
+                let rooms = Arc::new(paracord_relay::room::MediaRoomManager::new());
+                let speaker = Arc::new(paracord_relay::speaker::SpeakerDetector::new());
+                let native_state = paracord_core::NativeMediaState {
+                    rooms,
+                    speaker_detector: speaker,
+                    endpoint: Arc::new(endpoint),
+                };
+                state.native_media = Some(native_state);
+                tracing::info!(
+                    "Native QUIC media server listening on UDP port {}",
+                    config.voice.port
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to start native QUIC media server: {}", e);
+            }
+        }
+    }
+
+    // ── QUIC file transfer partial upload cleanup ─────────────────────────────
+    if config.voice.native_media {
+        let partial_dir =
+            std::path::Path::new(&config.storage.path).join("partial");
+        paracord_transport::file_transfer::PartialUploadManager::spawn_cleanup_task(
+            partial_dir,
+            shutdown_notify.clone(),
+        );
+        tracing::info!("QUIC file transfer enabled (sharing native media QUIC endpoint)");
+    }
 
     paracord_api::install_http_rate_limiter();
     paracord_api::spawn_http_rate_limiter_cleanup(shutdown_notify.clone());
@@ -616,6 +663,16 @@ async fn main() -> Result<()> {
     }
 
     // ── Startup banner ───────────────────────────────────────────────────────
+    let voice_status = if config.voice.native_media && livekit_reachable {
+        "Native QUIC (LiveKit fallback)".to_string()
+    } else if config.voice.native_media {
+        "Native QUIC".to_string()
+    } else if livekit_reachable {
+        livekit_status.clone()
+    } else {
+        "Not available".to_string()
+    };
+
     print_startup_banner(
         &config.server.bind_address,
         &config.server.public_url,
@@ -628,6 +685,7 @@ async fn main() -> Result<()> {
         tls_port,
         needs_manual_forwarding,
         upnp_server_port,
+        &voice_status,
     );
 
     // Graceful shutdown: clean up UPnP on ctrl-c or API-triggered restart
@@ -1231,6 +1289,119 @@ async fn run_retention_once(
         }
     }
 
+    // Per-guild file retention: purge attachments older than each guild's retention_days.
+    if let Ok(guild_policies) =
+        paracord_db::guild_storage_policies::list_guilds_with_retention_policies(db).await
+    {
+        for (guild_id, retention_days) in guild_policies {
+            let cutoff = now - chrono::Duration::days(retention_days as i64);
+            let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
+            let mut guild_deleted = 0_u64;
+            loop {
+                let attachments =
+                    match paracord_db::guild_storage_policies::get_guild_attachments_older_than(
+                        db,
+                        guild_id,
+                        &cutoff_str,
+                        batch_size,
+                    )
+                    .await
+                    {
+                        Ok(rows) => rows,
+                        Err(err) => {
+                            tracing::warn!(
+                                "Guild {} retention query failed: {}",
+                                guild_id,
+                                err
+                            );
+                            break;
+                        }
+                    };
+                if attachments.is_empty() {
+                    break;
+                }
+                let batch_len = attachments.len();
+                for attachment in &attachments {
+                    let _ = paracord_db::attachments::delete_attachment(db, attachment.id).await;
+                    remove_attachment_file(backend, attachment).await;
+                    guild_deleted += 1;
+                }
+                if (batch_len as i64) < batch_size {
+                    break;
+                }
+            }
+            if guild_deleted > 0 {
+                tracing::info!(
+                    "Guild {} retention removed {} attachment(s)",
+                    guild_id,
+                    guild_deleted
+                );
+            }
+        }
+    }
+
+    // Federation file cache cleanup: delete expired entries, then LRU evict if over size limit.
+    {
+        let now_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+        if let Ok(expired) =
+            paracord_db::federation_file_cache::get_expired_cache_entries(db, &now_str, batch_size)
+                .await
+        {
+            let mut cache_deleted = 0_u64;
+            for entry in &expired {
+                let _ = backend.delete(&entry.storage_key).await;
+                let _ = paracord_db::federation_file_cache::delete_cache_entry(db, entry.id).await;
+                cache_deleted += 1;
+            }
+            if cache_deleted > 0 {
+                tracing::info!(
+                    "Federation cache cleanup removed {} expired entrie(s)",
+                    cache_deleted
+                );
+            }
+        }
+
+        // LRU eviction if total cache size exceeds the configured maximum.
+        // We read the limit from server_settings DB, falling back to a 1GB default.
+        let cache_max_size: u64 = paracord_db::server_settings::get_setting(
+            db,
+            "federation_file_cache_max_size",
+        )
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1_073_741_824);
+
+        if let Ok(total_size) = paracord_db::federation_file_cache::get_total_cache_size(db).await {
+            if (total_size as u64) > cache_max_size {
+                if let Ok(lru_entries) =
+                    paracord_db::federation_file_cache::get_lru_cache_entries(db, batch_size).await
+                {
+                    let mut evicted = 0_u64;
+                    let mut running_size = total_size as u64;
+                    for entry in &lru_entries {
+                        if running_size <= cache_max_size {
+                            break;
+                        }
+                        let _ = backend.delete(&entry.storage_key).await;
+                        let _ =
+                            paracord_db::federation_file_cache::delete_cache_entry(db, entry.id)
+                                .await;
+                        running_size = running_size.saturating_sub(entry.size as u64);
+                        evicted += 1;
+                    }
+                    if evicted > 0 {
+                        tracing::info!(
+                            "Federation cache LRU evicted {} entrie(s)",
+                            evicted
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1393,6 +1564,7 @@ fn print_startup_banner(
     tls_port: u16,
     needs_manual_forwarding: bool,
     server_port: u16,
+    voice_status: &str,
 ) {
     println!();
     println!("  ____                                     _");
@@ -1422,6 +1594,7 @@ fn print_startup_banner(
     }
     println!();
     println!("  Database:    {}", db_url);
+    println!("  Voice:       {}", voice_status);
     println!("  LiveKit:     {}", livekit_status);
     println!("  Port Fwd:    {}", upnp_status);
     println!("  Web UI:      {}", web_ui);

@@ -25,6 +25,8 @@ clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 paracord-media = { workspace = true }
+paracord-relay = { path = "../paracord-relay" }
+paracord-transport = { path = "../paracord-transport" }
 anyhow = { workspace = true }
 tower-http = { workspace = true }
 igd-next = { workspace = true }

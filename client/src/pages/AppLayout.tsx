@@ -77,7 +77,7 @@ export function AppLayout() {
   const isOnVoiceChannel = voiceChannelId
     ? location.pathname.includes(`/channels/${voiceChannelId}`)
     : false;
-  const showMiniVoiceBar = voiceConnected && !isOnVoiceChannel;
+  const showMiniVoiceBar = isMobile && voiceConnected && !isOnVoiceChannel;
 
   return (
     <div className="workspace-canvas">
