@@ -96,5 +96,11 @@ export default defineConfig(({ mode }) => {
       minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
       sourcemap: !!process.env.TAURI_DEBUG,
     },
+    esbuild: {
+      // Strip verbose logging in production builds — keep warn/error for
+      // real issues the user or support might need to see.
+      drop: mode === "production" ? ["debugger"] : [],
+      pure: mode === "production" ? ["console.log", "console.info"] : [],
+    },
   };
 });

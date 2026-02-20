@@ -74,6 +74,7 @@ pub async fn update_guild(
     name: Option<&str>,
     description: Option<&str>,
     icon_hash: Option<&str>,
+    hub_settings: Option<&str>,
 ) -> Result<paracord_db::guilds::GuildRow, CoreError> {
     let guild = paracord_db::guilds::get_guild(pool, guild_id)
         .await?
@@ -84,6 +85,6 @@ pub async fn update_guild(
     permissions::require_permission(perms, Permissions::MANAGE_GUILD)?;
 
     let updated =
-        paracord_db::guilds::update_guild(pool, guild_id, name, description, icon_hash).await?;
+        paracord_db::guilds::update_guild(pool, guild_id, name, description, icon_hash, hub_settings).await?;
     Ok(updated)
 }

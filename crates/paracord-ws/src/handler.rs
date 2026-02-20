@@ -1685,6 +1685,122 @@ async fn handle_client_message(
                 }
             }
         }
+        // ── Native media opcodes ──────────────────────────────────────────
+        OP_MEDIA_CONNECT => {
+            // Client requests a native media session. Respond with
+            // OP_MEDIA_SESSION_DESC containing relay endpoint and peers.
+            if let Some(ref native) = state.native_media {
+                if let Some(d) = payload.get("d") {
+                    let guild_id = d
+                        .get("guild_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<i64>().ok());
+                    let channel_id = d
+                        .get("channel_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<i64>().ok());
+                    if let (Some(guild_id), Some(channel_id)) = (guild_id, channel_id) {
+                        let participant = paracord_relay::participant::MediaParticipant::new(
+                            session.user_id,
+                            session.session_id.clone(),
+                        );
+                        let room_id = native.rooms.get_or_create_room(guild_id, channel_id);
+                        let _ = native.rooms.join_room(guild_id, channel_id, participant);
+
+                        // Build peer list from current room participants
+                        let peers: Vec<Value> = native
+                            .rooms
+                            .get_room(&room_id)
+                            .map(|room| {
+                                room.participants
+                                    .values()
+                                    .filter(|p| p.user_id != session.user_id)
+                                    .map(|p| {
+                                        json!({
+                                            "user_id": p.user_id.to_string(),
+                                            "public_addr": p.public_addr.map(|a| a.to_string()),
+                                            "supports_p2p": p.public_addr.is_some(),
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        let port = state.config.native_media_port;
+                        let desc = json!({
+                            "relay_endpoint": format!("quic://0.0.0.0:{}", port),
+                            "wt_endpoint": format!("https://0.0.0.0:{}/media", port),
+                            "token": "", // Token generation deferred
+                            "room_id": room_id,
+                            "codecs": ["opus", "vp9"],
+                            "peers": peers,
+                        });
+                        let response = json!({
+                            "op": OP_MEDIA_SESSION_DESC,
+                            "d": desc,
+                        });
+                        let _ = sender
+                            .send(Message::Text(response.to_string().into()))
+                            .await;
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    "OP_MEDIA_CONNECT from user {} but native media not enabled",
+                    session.user_id
+                );
+            }
+        }
+        OP_MEDIA_KEY_ANNOUNCE => {
+            // Client announces a new sender key. Relay to all other
+            // participants in the same room via the event bus.
+            if let Some(d) = payload.get("d") {
+                if let Ok(announce) =
+                    serde_json::from_value::<MediaKeyAnnounce>(d.clone())
+                {
+                    // Deliver each per-recipient key
+                    for encrypted_key in &announce.encrypted_keys {
+                        let deliver = json!({
+                            "op": OP_MEDIA_KEY_DELIVER,
+                            "d": {
+                                "sender_user_id": session.user_id.to_string(),
+                                "epoch": announce.epoch,
+                                "ciphertext": encrypted_key.ciphertext,
+                            },
+                        });
+                        // Dispatch as a targeted event to the specific recipient
+                        state.event_bus.dispatch(
+                            EVENT_MEDIA_KEY_DELIVER,
+                            json!({
+                                "target_user_id": encrypted_key.recipient_user_id,
+                                "payload": deliver,
+                            }),
+                            None,
+                        );
+                    }
+                }
+            }
+        }
+        OP_MEDIA_SUBSCRIBE => {
+            // Client subscribes to a peer's media tracks.
+            // The relay manages subscription state internally.
+            if state.native_media.is_some() {
+                if let Some(d) = payload.get("d") {
+                    if let Ok(sub) =
+                        serde_json::from_value::<MediaSubscribe>(d.clone())
+                    {
+                        tracing::debug!(
+                            "User {} subscribes to user {} track {}",
+                            session.user_id,
+                            sub.user_id,
+                            sub.track_type
+                        );
+                        // Subscription tracking is handled by the QUIC relay;
+                        // this WS opcode is primarily for signaling intent.
+                    }
+                }
+            }
+        }
         _ => {
             tracing::debug!("Unknown opcode {} from client {}", op, session.user_id);
         }

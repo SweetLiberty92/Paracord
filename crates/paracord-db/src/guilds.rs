@@ -17,6 +17,7 @@ pub struct SpaceRow {
     pub visibility: String,
     pub allowed_roles: String,
     pub created_at: DateTime<Utc>,
+    pub hub_settings: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for SpaceRow {
@@ -35,6 +36,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for SpaceRow {
             visibility: row.try_get("visibility")?,
             allowed_roles: row.try_get("allowed_roles")?,
             created_at: datetime_from_db_text(&created_at_raw)?,
+            hub_settings: row.try_get("hub_settings").unwrap_or(None),
         })
     }
 }
@@ -52,7 +54,7 @@ pub async fn create_space(
     let row = sqlx::query_as::<_, SpaceRow>(
         "INSERT INTO spaces (id, name, owner_id, icon_hash)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at"
+         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at, hub_settings"
     )
     .bind(id)
     .bind(name)
@@ -75,7 +77,7 @@ pub async fn create_guild(
 
 pub async fn get_space(pool: &DbPool, id: i64) -> Result<Option<SpaceRow>, DbError> {
     let row = sqlx::query_as::<_, SpaceRow>(
-        "SELECT id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at
+        "SELECT id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at, hub_settings
          FROM spaces WHERE id = $1"
     )
     .bind(id)
@@ -94,20 +96,23 @@ pub async fn update_space(
     name: Option<&str>,
     description: Option<&str>,
     icon_hash: Option<&str>,
+    hub_settings: Option<&str>,
 ) -> Result<SpaceRow, DbError> {
     let row = sqlx::query_as::<_, SpaceRow>(
         "UPDATE spaces
          SET name = COALESCE($2, name),
              description = COALESCE($3, description),
              icon_hash = COALESCE($4, icon_hash),
+             hub_settings = COALESCE($5, hub_settings),
              updated_at = datetime('now')
          WHERE id = $1
-         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at"
+         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at, hub_settings"
     )
     .bind(id)
     .bind(name)
     .bind(description)
     .bind(icon_hash)
+    .bind(hub_settings)
     .fetch_one(pool)
     .await?;
     Ok(row)
@@ -119,8 +124,9 @@ pub async fn update_guild(
     name: Option<&str>,
     description: Option<&str>,
     icon_hash: Option<&str>,
+    hub_settings: Option<&str>,
 ) -> Result<SpaceRow, DbError> {
-    update_space(pool, id, name, description, icon_hash).await
+    update_space(pool, id, name, description, icon_hash, hub_settings).await
 }
 
 pub async fn update_space_visibility(
@@ -135,7 +141,7 @@ pub async fn update_space_visibility(
              allowed_roles = $3,
              updated_at = datetime('now')
          WHERE id = $1
-         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at"
+         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at, hub_settings"
     )
     .bind(id)
     .bind(visibility)
@@ -159,7 +165,7 @@ pub async fn delete_guild(pool: &DbPool, id: i64) -> Result<(), DbError> {
 
 pub async fn list_all_spaces(pool: &DbPool) -> Result<Vec<SpaceRow>, DbError> {
     let rows = sqlx::query_as::<_, SpaceRow>(
-        "SELECT id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at
+        "SELECT id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at, hub_settings
          FROM spaces
          ORDER BY created_at ASC"
     )
@@ -171,7 +177,7 @@ pub async fn list_all_spaces(pool: &DbPool) -> Result<Vec<SpaceRow>, DbError> {
 pub async fn get_user_guilds(pool: &DbPool, user_id: i64) -> Result<Vec<SpaceRow>, DbError> {
     let rows = sqlx::query_as::<_, SpaceRow>(
         "SELECT s.id, s.name, s.description, s.icon_hash, s.banner_hash, s.owner_id, s.features,
-                s.system_channel_id, s.vanity_url_code, s.visibility, s.allowed_roles, s.created_at
+                s.system_channel_id, s.vanity_url_code, s.visibility, s.allowed_roles, s.created_at, s.hub_settings
          FROM spaces s
          INNER JOIN members m ON m.guild_id = s.id
          WHERE m.user_id = $1
@@ -245,7 +251,7 @@ pub async fn transfer_ownership(
     let row = sqlx::query_as::<_, SpaceRow>(
         "UPDATE spaces SET owner_id = $2, updated_at = datetime('now')
          WHERE id = $1
-         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at"
+         RETURNING id, name, description, icon_hash, banner_hash, owner_id, features, system_channel_id, vanity_url_code, visibility, allowed_roles, created_at, hub_settings"
     )
     .bind(space_id)
     .bind(new_owner_id)
@@ -322,7 +328,7 @@ mod tests {
         let pool = test_pool().await;
         create_test_user(&pool, 1).await;
         create_guild(&pool, 300, "Old Name", 1, None).await.unwrap();
-        let updated = update_guild(&pool, 300, Some("New Name"), Some("A description"), None)
+        let updated = update_guild(&pool, 300, Some("New Name"), Some("A description"), None, None)
             .await
             .unwrap();
         assert_eq!(updated.name, "New Name");
@@ -334,7 +340,7 @@ mod tests {
         let pool = test_pool().await;
         create_test_user(&pool, 1).await;
         create_guild(&pool, 301, "Original", 1, None).await.unwrap();
-        let updated = update_guild(&pool, 301, None, Some("desc only"), None)
+        let updated = update_guild(&pool, 301, None, Some("desc only"), None, None)
             .await
             .unwrap();
         assert_eq!(updated.name, "Original");

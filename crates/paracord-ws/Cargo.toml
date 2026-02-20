@@ -9,6 +9,7 @@ license.workspace = true
 paracord-core = { workspace = true }
 paracord-models = { workspace = true }
 paracord-db = { workspace = true }
+paracord-relay = { path = "../paracord-relay" }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
