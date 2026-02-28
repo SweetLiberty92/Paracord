@@ -56,6 +56,8 @@ jobs:
           toolchain: "1.91"
       - name: Migration ordering and apply sanity
         run: python3 scripts/ci_migration_sanity.py
+      - name: Ensure client/dist exists for rust-embed
+        run: mkdir -p client/dist
       - name: Cargo check (no-default-features)
         run: cargo check --workspace --no-default-features
       - name: Cargo check (default features)
