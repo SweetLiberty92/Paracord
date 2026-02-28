@@ -66,7 +66,7 @@ fn event_buffers() -> &'static dashmap::DashMap<String, VecDeque<BufferedEvent>>
                         buffers.remove_if(&key, |_, buffer| {
                             buffer
                                 .back()
-                                .map_or(true, |e| e.timestamp.elapsed() > MAX_REPLAY_AGE)
+                                .is_none_or(|e| e.timestamp.elapsed() > MAX_REPLAY_AGE)
                         });
                     }
                 }
@@ -234,6 +234,7 @@ fn wire_log_ws_close(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn send_ws_text_logged(
     sender: &mut (impl SinkExt<Message> + Unpin),
     payload: String,
@@ -827,9 +828,7 @@ pub async fn handle_connection(socket: WebSocket, state: AppState, compress: boo
                         .await
                         .ok()
                         .flatten();
-                    let Some(g) = guild else {
-                        return None;
-                    };
+                    let g = guild?;
 
                     // Two independent queries in parallel
                     let (voice_states, member_ids) = tokio::join!(
@@ -1316,7 +1315,7 @@ async fn run_session(
                             if let Some(frame) = frame {
                                 format!(
                                     "client close frame (code={}, reason={})",
-                                    u16::from(frame.code),
+                                    frame.code,
                                     frame.reason
                                 )
                             } else {

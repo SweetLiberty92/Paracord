@@ -220,12 +220,12 @@ pub fn build_router() -> Router<AppState> {
             "/api/v1/guilds/{guild_id}/events",
             get(routes::events::list_events).post(routes::events::create_event),
         )
+        // Guild Commands
         .route(
-            "/api/v1/guilds/{guild_id}/events/{event_id}",
-            get(routes::events::get_event)
-                .patch(routes::events::update_event)
-                .delete(routes::events::delete_event),
+            "/api/v1/guilds/{guild_id}/commands",
+            get(routes::commands::list_guild_available_commands_handler),
         )
+        // Guild Bots
         .route(
             "/api/v1/guilds/{guild_id}/events/{event_id}/rsvp",
             put(routes::events::add_rsvp).delete(routes::events::remove_rsvp),
@@ -233,6 +233,12 @@ pub fn build_router() -> Router<AppState> {
         .route(
             "/api/v1/guilds/{guild_id}/bots",
             get(routes::bots::list_guild_bots),
+        )
+        .route(
+            "/api/v1/guilds/{guild_id}/events/{event_id}",
+            get(routes::events::get_event)
+                .patch(routes::events::update_event)
+                .delete(routes::events::delete_event),
         )
         .route(
             "/api/v1/guilds/{guild_id}/bots/{bot_app_id}",
@@ -394,6 +400,50 @@ pub fn build_router() -> Router<AppState> {
             "/api/v1/bots/applications/{bot_app_id}/installs",
             get(routes::bots::list_bot_application_installs),
         )
+        // Application Commands (Global & Guild)
+        .route(
+            "/api/v1/applications/{app_id}/commands",
+            get(routes::commands::list_global_commands)
+                .post(routes::commands::create_global_command)
+                .put(routes::commands::bulk_overwrite_global_commands),
+        )
+        .route(
+            "/api/v1/applications/{app_id}/commands/{cmd_id}",
+            get(routes::commands::get_global_command)
+                .patch(routes::commands::update_global_command)
+                .delete(routes::commands::delete_global_command),
+        )
+        .route(
+            "/api/v1/applications/{app_id}/guilds/{guild_id}/commands",
+            get(routes::commands::list_guild_commands)
+                .post(routes::commands::create_guild_command)
+                .put(routes::commands::bulk_overwrite_guild_commands),
+        )
+        .route(
+            "/api/v1/applications/{app_id}/guilds/{guild_id}/commands/{cmd_id}",
+            get(routes::commands::get_guild_command)
+                .patch(routes::commands::update_guild_command)
+                .delete(routes::commands::delete_guild_command),
+        )
+        // Interactions
+        .route(
+            "/api/v1/interactions",
+            post(routes::interactions::invoke_interaction),
+        )
+        .route(
+            "/api/v1/interactions/{interaction_id}/{token}/callback",
+            post(routes::interactions::interaction_callback),
+        )
+        .route(
+            "/api/v1/interactions/{app_id}/{token}/messages/@original",
+            patch(routes::interactions::edit_original_response)
+                .delete(routes::interactions::delete_original_response),
+        )
+        .route(
+            "/api/v1/interactions/{app_id}/{token}/followup",
+            post(routes::interactions::create_followup_message),
+        )
+        // OAuth2
         .route(
             "/api/v1/oauth2/authorize",
             post(routes::bots::oauth2_authorize),
@@ -806,10 +856,7 @@ impl HttpRateLimiter {
     fn cleanup_stale(&self, max_age_seconds: i64) {
         let now = chrono::Utc::now().timestamp();
         self.buckets.retain(|_, bucket| {
-            let guard = match bucket.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+            let guard = bucket.get_mut().unwrap();
             now.saturating_sub(guard.window_start) <= max_age_seconds
         });
     }

@@ -67,6 +67,7 @@ pub async fn create_message(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_message_with_meta(
     pool: &DbPool,
     id: i64,

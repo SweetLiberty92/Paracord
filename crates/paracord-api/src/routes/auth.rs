@@ -160,7 +160,7 @@ async fn auth_guard_maybe_cleanup(state: &AppState, now: i64) {
     let op = AUTH_GUARD_OP_COUNTER
         .fetch_add(1, Ordering::Relaxed)
         .saturating_add(1);
-    if op % 64 != 0 {
+    if !op.is_multiple_of(64) {
         return;
     }
     let cutoff = now.saturating_sub(AUTH_GUARD_TTL_SECONDS);

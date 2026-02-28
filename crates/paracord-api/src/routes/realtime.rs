@@ -202,97 +202,93 @@ pub async fn stream_events(
             return Some((Ok(event), st));
         }
 
-        loop {
-            match st.receiver.recv().await {
-                Ok(event) => {
-                    if event.event_type == "GUILD_MEMBER_ADD" {
-                        if let Some(uid) = event.payload.get("user_id").and_then(|v| v.as_str()) {
-                            if uid == st.user_id.to_string() {
-                                if let Some(gid) = event
-                                    .payload
-                                    .get("guild_id")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| s.parse::<i64>().ok())
-                                {
-                                    st.app_state
-                                        .event_bus
-                                        .add_session_guild(&st.session_id, gid);
-                                }
+        match st.receiver.recv().await {
+            Ok(event) => {
+                if event.event_type == "GUILD_MEMBER_ADD" {
+                    if let Some(uid) = event.payload.get("user_id").and_then(|v| v.as_str()) {
+                        if uid == st.user_id.to_string() {
+                            if let Some(gid) = event
+                                .payload
+                                .get("guild_id")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.parse::<i64>().ok())
+                            {
+                                st.app_state
+                                    .event_bus
+                                    .add_session_guild(&st.session_id, gid);
                             }
-                        }
-                    } else if event.event_type == "GUILD_MEMBER_REMOVE"
-                        || event.event_type == "GUILD_BAN_ADD"
-                    {
-                        if let Some(uid) = event.payload.get("user_id").and_then(|v| v.as_str()) {
-                            if uid == st.user_id.to_string() {
-                                if let Some(gid) = event
-                                    .payload
-                                    .get("guild_id")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| s.parse::<i64>().ok())
-                                {
-                                    st.app_state
-                                        .event_bus
-                                        .remove_session_guild(&st.session_id, gid);
-                                }
-                            }
-                        }
-                    } else if event.event_type == "GUILD_DELETE" {
-                        if let Some(gid) = event
-                            .payload
-                            .get("id")
-                            .or_else(|| event.payload.get("guild_id"))
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse::<i64>().ok())
-                        {
-                            st.app_state
-                                .event_bus
-                                .remove_session_guild(&st.session_id, gid);
                         }
                     }
-                    st.sequence = st.sequence.saturating_add(1);
-                    let event_data = if let Some(serialized) = event.serialized_payload {
-                        format!(
-                            r#"{{"event_id":{},"op":0,"t":"{}","s":{},"d":{}}}"#,
-                            st.sequence, event.event_type, st.sequence, serialized
-                        )
-                    } else {
-                        json!({
-                            "event_id": st.sequence,
-                            "op": 0,
-                            "t": event.event_type,
-                            "s": st.sequence,
-                            "d": *event.payload,
-                        })
-                        .to_string()
-                    };
-                    let sse_event = Event::default()
-                        .event("gateway")
-                        .id(st.sequence.to_string())
-                        .data(event_data);
-                    return Some((Ok(sse_event), st));
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    st.sequence = st.sequence.saturating_add(1);
-                    let reconnect = json!({
-                        "event_id": st.sequence,
-                        "op": 7,
-                        "d": {
-                            "reason": "lagged",
-                            "skipped": skipped,
+                } else if event.event_type == "GUILD_MEMBER_REMOVE"
+                    || event.event_type == "GUILD_BAN_ADD"
+                {
+                    if let Some(uid) = event.payload.get("user_id").and_then(|v| v.as_str()) {
+                        if uid == st.user_id.to_string() {
+                            if let Some(gid) = event
+                                .payload
+                                .get("guild_id")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| s.parse::<i64>().ok())
+                            {
+                                st.app_state
+                                    .event_bus
+                                    .remove_session_guild(&st.session_id, gid);
+                            }
                         }
+                    }
+                } else if event.event_type == "GUILD_DELETE" {
+                    if let Some(gid) = event
+                        .payload
+                        .get("id")
+                        .or_else(|| event.payload.get("guild_id"))
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<i64>().ok())
+                    {
+                        st.app_state
+                            .event_bus
+                            .remove_session_guild(&st.session_id, gid);
+                    }
+                }
+                st.sequence = st.sequence.saturating_add(1);
+                let event_data = if let Some(serialized) = event.serialized_payload {
+                    format!(
+                        r#"{{"event_id":{},"op":0,"t":"{}","s":{},"d":{}}}"#,
+                        st.sequence, event.event_type, st.sequence, serialized
+                    )
+                } else {
+                    json!({
+                        "event_id": st.sequence,
+                        "op": 0,
+                        "t": event.event_type,
+                        "s": st.sequence,
+                        "d": *event.payload,
                     })
-                    .to_string();
-                    let sse_event = Event::default()
-                        .event("gateway")
-                        .id(st.sequence.to_string())
-                        .data(reconnect);
-                    return Some((Ok(sse_event), st));
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    return None;
-                }
+                    .to_string()
+                };
+                let sse_event = Event::default()
+                    .event("gateway")
+                    .id(st.sequence.to_string())
+                    .data(event_data);
+                Some((Ok(sse_event), st))
             }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                st.sequence = st.sequence.saturating_add(1);
+                let reconnect = json!({
+                    "event_id": st.sequence,
+                    "op": 7,
+                    "d": {
+                        "reason": "lagged",
+                        "skipped": skipped,
+                    }
+                })
+                .to_string();
+                let sse_event = Event::default()
+                    .event("gateway")
+                    .id(st.sequence.to_string())
+                    .data(reconnect);
+                Some((Ok(sse_event), st))
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => None,
         }
     });
 

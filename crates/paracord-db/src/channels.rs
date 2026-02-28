@@ -99,6 +99,7 @@ impl ChannelRow {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_channel(
     pool: &DbPool,
     id: i64,
@@ -262,6 +263,7 @@ pub fn serialize_required_role_ids(role_ids: &[i64]) -> String {
 }
 
 /// Create a thread channel under a parent text channel.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_thread(
     pool: &DbPool,
     id: i64,

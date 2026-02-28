@@ -96,6 +96,14 @@ pub fn validate_password(password: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
+pub fn contains_dangerous_markup(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("<script")
+        || lower.contains("javascript:")
+        || lower.contains("onload=")
+        || lower.contains("onerror=")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -69,25 +69,13 @@ impl DmE2eePayload {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateMessageOptions {
     pub message_type: i16,
     pub reference_id: Option<i64>,
     pub allow_empty_content: bool,
     pub dm_e2ee: Option<DmE2eePayload>,
     pub nonce: Option<String>,
-}
-
-impl Default for CreateMessageOptions {
-    fn default() -> Self {
-        Self {
-            message_type: 0,
-            reference_id: None,
-            allow_empty_content: false,
-            dm_e2ee: None,
-            nonce: None,
-        }
-    }
 }
 
 /// Create a message, requires SEND_MESSAGES and VIEW_CHANNEL.

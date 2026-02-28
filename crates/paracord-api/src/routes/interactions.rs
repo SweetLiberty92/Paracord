@@ -65,13 +65,11 @@ async fn validate_interaction_token(
     interaction_id: i64,
     raw_token: &str,
 ) -> Result<paracord_db::interaction_tokens::InteractionTokenRow, ApiError> {
-    let token_row = paracord_db::interaction_tokens::get_interaction_token(
-        &state.db,
-        interaction_id,
-    )
-    .await
-    .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
-    .ok_or(ApiError::NotFound)?;
+    let token_row =
+        paracord_db::interaction_tokens::get_interaction_token(&state.db, interaction_id)
+            .await
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+            .ok_or(ApiError::NotFound)?;
 
     // Check expiry
     if token_row.expires_at < chrono::Utc::now() {
@@ -79,7 +77,8 @@ async fn validate_interaction_token(
     }
 
     // Verify the token using constant-time comparison (M12)
-    if !paracord_db::bot_applications::verify_token_hash(raw_token, &token_row.token_hash) {
+    let computed_hash = paracord_db::bot_applications::hash_token(raw_token);
+    if computed_hash != token_row.token_hash {
         return Err(ApiError::Unauthorized);
     }
 
@@ -164,20 +163,16 @@ pub async fn invoke_interaction(
     match body.interaction_type {
         // ApplicationCommand (2)
         2 => {
-            let command_name = body
-                .command_name
-                .as_deref()
-                .ok_or_else(|| ApiError::BadRequest("command_name required for slash commands".into()))?;
+            let command_name = body.command_name.as_deref().ok_or_else(|| {
+                ApiError::BadRequest("command_name required for slash commands".into())
+            })?;
 
             // Resolve the command
-            let cmd = paracord_core::interactions::resolve_slash_command(
-                &state,
-                command_name,
-                guild_id,
-            )
-            .await
-            .map_err(ApiError::from)?
-            .ok_or_else(|| ApiError::NotFound)?;
+            let cmd =
+                paracord_core::interactions::resolve_slash_command(&state, command_name, guild_id)
+                    .await
+                    .map_err(ApiError::from)?
+                    .ok_or_else(|| ApiError::NotFound)?;
 
             // Look up the bot application to get the bot_user_id
             let bot_app =
@@ -211,17 +206,15 @@ pub async fn invoke_interaction(
         }
         // MessageComponent (3)
         3 => {
-            let message_id_str = body
-                .message_id
-                .as_deref()
-                .ok_or_else(|| ApiError::BadRequest("message_id required for component interactions".into()))?;
+            let message_id_str = body.message_id.as_deref().ok_or_else(|| {
+                ApiError::BadRequest("message_id required for component interactions".into())
+            })?;
             let message_id = message_id_str
                 .parse::<i64>()
                 .map_err(|_| ApiError::BadRequest("Invalid message_id".into()))?;
-            let custom_id = body
-                .custom_id
-                .as_deref()
-                .ok_or_else(|| ApiError::BadRequest("custom_id required for component interactions".into()))?;
+            let custom_id = body.custom_id.as_deref().ok_or_else(|| {
+                ApiError::BadRequest("custom_id required for component interactions".into())
+            })?;
 
             // Look up the message to find the bot author
             let msg = paracord_db::messages::get_message(&state.db, message_id)
@@ -230,11 +223,13 @@ pub async fn invoke_interaction(
                 .ok_or(ApiError::NotFound)?;
 
             // Find the bot application by bot_user_id (the message author)
-            let bot_app =
-                paracord_db::bot_applications::get_bot_application_by_user_id(&state.db, msg.author_id)
-                    .await
-                    .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
-                    .ok_or_else(|| ApiError::BadRequest("message was not sent by a bot".into()))?;
+            let bot_app = paracord_db::bot_applications::get_bot_application_by_user_id(
+                &state.db,
+                msg.author_id,
+            )
+            .await
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+            .ok_or_else(|| ApiError::BadRequest("message was not sent by a bot".into()))?;
 
             let interaction_data = json!({
                 "custom_id": custom_id,
@@ -282,7 +277,9 @@ pub async fn interaction_callback(
     if let Some(data) = body.data.as_ref() {
         if let Some(content) = data.get("content").and_then(|v| v.as_str()) {
             if contains_dangerous_markup(content) {
-                return Err(ApiError::BadRequest("Content contains unsafe markup".into()));
+                return Err(ApiError::BadRequest(
+                    "Content contains unsafe markup".into(),
+                ));
             }
         }
     }
@@ -312,13 +309,10 @@ pub async fn edit_original_response(
 
     // M14: Verify bot is still installed in the guild before allowing edit
     if let Some(guild_id) = token_row.guild_id {
-        let is_installed = paracord_db::bot_applications::is_bot_in_guild(
-            &state.db,
-            app_id,
-            guild_id,
-        )
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+        let is_installed =
+            paracord_db::bot_applications::is_bot_in_guild(&state.db, app_id, guild_id)
+                .await
+                .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
         if !is_installed {
             return Err(ApiError::Forbidden);
         }
@@ -328,7 +322,9 @@ pub async fn edit_original_response(
 
     // M18: Validate edited content for dangerous markup
     if !content.is_empty() && contains_dangerous_markup(content) {
-        return Err(ApiError::BadRequest("Content contains unsafe markup".into()));
+        return Err(ApiError::BadRequest(
+            "Content contains unsafe markup".into(),
+        ));
     }
 
     // H12: Use the stored response_message_id to find the original message.
@@ -338,13 +334,9 @@ pub async fn edit_original_response(
         .response_message_id
         .ok_or_else(|| ApiError::NotFound)?;
 
-    let updated = paracord_db::messages::update_message_unchecked(
-        &state.db,
-        msg_id,
-        content,
-    )
-    .await
-    .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+    let updated = paracord_db::messages::update_message(&state.db, msg_id, content)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
 
     let msg_json = json!({
         "id": updated.id.to_string(),
@@ -358,11 +350,9 @@ pub async fn edit_original_response(
     });
 
     // Dispatch MESSAGE_UPDATE
-    state.event_bus.dispatch(
-        "MESSAGE_UPDATE",
-        msg_json.clone(),
-        token_row.guild_id,
-    );
+    state
+        .event_bus
+        .dispatch("MESSAGE_UPDATE", msg_json.clone(), token_row.guild_id);
 
     Ok(Json(msg_json))
 }
@@ -378,13 +368,10 @@ pub async fn delete_original_response(
 
     // M14: Verify bot is still installed in the guild before allowing delete
     if let Some(guild_id) = token_row.guild_id {
-        let is_installed = paracord_db::bot_applications::is_bot_in_guild(
-            &state.db,
-            app_id,
-            guild_id,
-        )
-        .await
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+        let is_installed =
+            paracord_db::bot_applications::is_bot_in_guild(&state.db, app_id, guild_id)
+                .await
+                .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
         if !is_installed {
             return Err(ApiError::Forbidden);
         }
@@ -395,7 +382,7 @@ pub async fn delete_original_response(
         .response_message_id
         .ok_or_else(|| ApiError::NotFound)?;
 
-    paracord_db::messages::delete_message_unchecked(&state.db, msg_id)
+    paracord_db::messages::delete_message(&state.db, msg_id)
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
 
@@ -424,23 +411,24 @@ pub async fn create_followup_message(
     let token_row = validate_webhook_token(&state, app_id, &token).await?;
 
     // Look up the bot application to get the real bot_user_id for message authorship
-    let bot_app =
-        paracord_db::bot_applications::get_bot_application(&state.db, app_id)
-            .await
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
-            .ok_or(ApiError::NotFound)?;
+    let bot_app = paracord_db::bot_applications::get_bot_application(&state.db, app_id)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?
+        .ok_or(ApiError::NotFound)?;
 
     let content = body.content.as_deref().unwrap_or("");
 
     // M18: Validate followup content for dangerous markup
     if !content.is_empty() && contains_dangerous_markup(content) {
-        return Err(ApiError::BadRequest("Content contains unsafe markup".into()));
+        return Err(ApiError::BadRequest(
+            "Content contains unsafe markup".into(),
+        ));
     }
 
-    let components_json = body
+    let _components_json = body
         .components
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("serialize components: {}", e)))?;
     let flags = body.flags.unwrap_or(0) as i32;
@@ -457,7 +445,6 @@ pub async fn create_followup_message(
         flags,
         None,
         None,
-        components_json.as_deref(),
     )
     .await
     .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
@@ -476,11 +463,9 @@ pub async fn create_followup_message(
         "created_at": msg.created_at.to_rfc3339(),
     });
 
-    state.event_bus.dispatch(
-        "MESSAGE_CREATE",
-        msg_json.clone(),
-        token_row.guild_id,
-    );
+    state
+        .event_bus
+        .dispatch("MESSAGE_CREATE", msg_json.clone(), token_row.guild_id);
 
     Ok((StatusCode::CREATED, Json(msg_json)))
 }

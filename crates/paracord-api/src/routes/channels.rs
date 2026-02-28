@@ -808,7 +808,7 @@ pub async fn send_message(
             msg.id,
             auth.user_id,
             channel_id,
-            now.clone(),
+            now,
         )
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
@@ -2485,6 +2485,7 @@ async fn federation_forward_message(
 }
 
 /// Forward a generic federation event envelope to all trusted peers.
+#[allow(clippy::too_many_arguments)]
 async fn federation_forward_generic(
     state: &AppState,
     event_type: &str,

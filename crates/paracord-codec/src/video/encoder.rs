@@ -460,7 +460,7 @@ impl VideoEncoder for NullEncoder {
             300
         };
         let is_keyframe =
-            force_keyframe || self.frame_count == 0 || (self.frame_count % kf_interval == 0);
+            force_keyframe || self.frame_count == 0 || self.frame_count.is_multiple_of(kf_interval);
 
         self.frame_count += 1;
 

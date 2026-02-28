@@ -69,6 +69,7 @@ pub fn hash_token(token: &str) -> String {
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_bot_application(
     pool: &DbPool,
     id: i64,
@@ -107,6 +108,20 @@ pub async fn get_bot_application(
          FROM bot_applications WHERE id = $1",
     )
     .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn get_bot_application_by_user_id(
+    pool: &DbPool,
+    bot_user_id: i64,
+) -> Result<Option<BotApplicationRow>, DbError> {
+    let row = sqlx::query_as::<_, BotApplicationRow>(
+        "SELECT id, name, description, owner_id, bot_user_id, token_hash, redirect_uri, permissions, created_at, updated_at
+         FROM bot_applications WHERE bot_user_id = $1",
+    )
+    .bind(bot_user_id)
     .fetch_optional(pool)
     .await?;
     Ok(row)

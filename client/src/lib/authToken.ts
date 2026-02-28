@@ -34,5 +34,4 @@ export function setRefreshToken(token: string | null): void {
 export function clearLegacyPersistedAuth(): void {
   localStorage.removeItem('token');
   localStorage.removeItem('auth-storage');
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }

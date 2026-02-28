@@ -2,8 +2,6 @@ mod audio_capture;
 mod commands;
 mod native_media;
 
-use tauri::Manager;
-
 #[cfg(windows)]
 fn configure_webview2_overrides(app: &tauri::App) {
     use webview2_com::Microsoft::Web::WebView2::Win32::{

@@ -63,6 +63,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for PollRow {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_poll(
     pool: &DbPool,
     poll_id: i64,

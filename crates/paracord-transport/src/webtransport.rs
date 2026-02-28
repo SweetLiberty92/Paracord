@@ -293,20 +293,15 @@ pub fn spawn_webtransport_bridge(
 
     // Inbound: browser → relay
     tokio::spawn(async move {
-        loop {
-            match quinn_conn.read_datagram().await {
-                Ok(datagram) => {
-                    // Strip the QSID varint prefix
-                    if let Some((_qsid_val, prefix_len)) = decode_quic_varint(&datagram) {
-                        if prefix_len <= datagram.len() {
-                            let raw = datagram.slice(prefix_len..);
-                            if inbound_tx.send(raw).is_err() {
-                                break;
-                            }
-                        }
+        while let Ok(datagram) = quinn_conn.read_datagram().await {
+            // Strip the QSID varint prefix
+            if let Some((_qsid_val, prefix_len)) = decode_quic_varint(&datagram) {
+                if prefix_len <= datagram.len() {
+                    let raw = datagram.slice(prefix_len..);
+                    if inbound_tx.send(raw).is_err() {
+                        break;
                     }
                 }
-                Err(_) => break,
             }
         }
     });

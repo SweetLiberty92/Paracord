@@ -96,6 +96,7 @@ impl TestHarness {
             federation_service: None,
             member_index: Arc::new(paracord_core::member_index::MemberIndex::empty()),
             native_media: None,
+            presence_manager: Arc::new(paracord_core::presence_manager::PresenceManager::new()),
         };
 
         let app = paracord_api::build_router().with_state(state);

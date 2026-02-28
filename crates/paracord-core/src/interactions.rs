@@ -20,6 +20,7 @@ fn generate_interaction_token() -> String {
 /// Create an interaction, store its token, and dispatch INTERACTION_CREATE to the bot.
 ///
 /// Returns `(interaction_json, raw_token)` so the caller can return the token to the invoking user.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_interaction(
     state: &AppState,
     application_id: i64,
@@ -96,12 +97,10 @@ pub async fn resolve_slash_command(
     command_name: &str,
     guild_id: i64,
 ) -> Result<Option<paracord_db::application_commands::ApplicationCommandRow>, CoreError> {
-    let available = paracord_db::application_commands::list_guild_available_commands(
-        &state.db,
-        guild_id,
-    )
-    .await
-    .map_err(|e| CoreError::Internal(e.to_string()))?;
+    let available =
+        paracord_db::application_commands::list_guild_available_commands(&state.db, guild_id)
+            .await
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
 
     Ok(available.into_iter().find(|cmd| cmd.name == command_name))
 }
@@ -153,13 +152,12 @@ pub async fn process_interaction_response(
                     .map_err(|e| CoreError::Internal(e.to_string()))?
                     .ok_or(CoreError::NotFound)?;
 
-                let bot_perms = crate::permissions::compute_bot_permissions(
+                let bot_perms = crate::permissions::compute_channel_permissions(
                     &state.db,
-                    author_id,
-                    token_row.application_id,
                     guild_id,
                     token_row.channel_id,
                     guild.owner_id,
+                    author_id,
                 )
                 .await?;
 
@@ -171,10 +169,7 @@ pub async fn process_interaction_response(
             let data = callback_data.ok_or_else(|| {
                 CoreError::BadRequest("callback data required for message response".into())
             })?;
-            let content = data
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
             // 3. Validate content length (same limits as regular messages)
             const MAX_MESSAGE_CONTENT_LEN: usize = 4_000;
@@ -187,18 +182,15 @@ pub async fn process_interaction_response(
 
             let components_json = data
                 .get("components")
-                .map(|v| serde_json::to_string(v))
+                .map(serde_json::to_string)
                 .transpose()
                 .map_err(|e| CoreError::Internal(format!("serialize components: {e}")))?;
             let embeds_json = data
                 .get("embeds")
-                .map(|v| serde_json::to_string(v))
+                .map(serde_json::to_string)
                 .transpose()
                 .map_err(|e| CoreError::Internal(format!("serialize embeds: {e}")))?;
-            let flags = data
-                .get("flags")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
+            let flags = data.get("flags").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
 
             let message_id = paracord_util::snowflake::generate(1);
             // Message type 20 = ChatInputCommand (interaction response)
@@ -213,7 +205,6 @@ pub async fn process_interaction_response(
                 flags,
                 None,
                 None,
-                components_json.as_deref(),
             )
             .await
             .map_err(|e| CoreError::Internal(e.to_string()))?;
@@ -245,11 +236,9 @@ pub async fn process_interaction_response(
 
             // Dispatch MESSAGE_CREATE
             let guild_id = token_row.guild_id;
-            state.event_bus.dispatch(
-                "MESSAGE_CREATE",
-                msg_json.clone(),
-                guild_id,
-            );
+            state
+                .event_bus
+                .dispatch("MESSAGE_CREATE", msg_json.clone(), guild_id);
 
             Ok(Some(msg_json))
         }
@@ -292,11 +281,9 @@ pub async fn process_interaction_response(
                 "created_at": msg.created_at.to_rfc3339(),
             });
 
-            state.event_bus.dispatch(
-                "MESSAGE_CREATE",
-                msg_json.clone(),
-                token_row.guild_id,
-            );
+            state
+                .event_bus
+                .dispatch("MESSAGE_CREATE", msg_json.clone(), token_row.guild_id);
 
             Ok(Some(msg_json))
         }
@@ -331,13 +318,12 @@ pub async fn process_interaction_response(
                     .map_err(|e| CoreError::Internal(e.to_string()))?
                     .ok_or(CoreError::NotFound)?;
 
-                let bot_perms = crate::permissions::compute_bot_permissions(
+                let bot_perms = crate::permissions::compute_channel_permissions(
                     &state.db,
-                    author_id,
-                    token_row.application_id,
                     guild_id,
                     token_row.channel_id,
                     guild.owner_id,
+                    author_id,
                 )
                 .await?;
 
@@ -349,10 +335,7 @@ pub async fn process_interaction_response(
             let data = callback_data.ok_or_else(|| {
                 CoreError::BadRequest("callback data required for update message response".into())
             })?;
-            let content = data
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
             // 3. Validate content length (same limits as regular messages)
             const MAX_MESSAGE_CONTENT_LEN: usize = 4_000;
@@ -368,7 +351,7 @@ pub async fn process_interaction_response(
                 CoreError::BadRequest("no original response message to update".into())
             })?;
 
-            let updated = paracord_db::messages::update_message_unchecked(&state.db, msg_id, content)
+            let updated = paracord_db::messages::update_message(&state.db, msg_id, content)
                 .await
                 .map_err(|e| CoreError::Internal(e.to_string()))?;
 
@@ -382,11 +365,9 @@ pub async fn process_interaction_response(
                 "created_at": updated.created_at.to_rfc3339(),
             });
 
-            state.event_bus.dispatch(
-                "MESSAGE_UPDATE",
-                msg_json.clone(),
-                token_row.guild_id,
-            );
+            state
+                .event_bus
+                .dispatch("MESSAGE_UPDATE", msg_json.clone(), token_row.guild_id);
 
             Ok(Some(msg_json))
         }

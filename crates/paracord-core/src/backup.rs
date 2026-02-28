@@ -209,7 +209,7 @@ pub async fn restore_backup(
         })
         .await
         .map_err(|e| CoreError::Internal(format!("pg_restore task failed: {e}")))?
-        .map_err(|e| CoreError::Internal(e))?;
+        .map_err(CoreError::Internal)?;
     } else {
         let db_path = parse_sqlite_path(db_url)?;
         let db_path_clone = db_path.clone();
@@ -227,7 +227,7 @@ pub async fn restore_backup(
         })
         .await
         .map_err(|e| CoreError::Internal(format!("DB replace task failed: {e}")))?
-        .map_err(|e| CoreError::Internal(e))?;
+        .map_err(CoreError::Internal)?;
     }
 
     // Restore media files if included
@@ -252,7 +252,7 @@ pub async fn restore_backup(
             })
             .await
             .map_err(|e| CoreError::Internal(format!("Media restore task failed: {e}")))?
-            .map_err(|e| CoreError::Internal(e))?;
+            .map_err(CoreError::Internal)?;
         }
     }
 

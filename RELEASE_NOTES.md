@@ -1,3 +1,21 @@
+## What's New in v0.9.1
+
+### Bug Fixes
+
+- **Fix refresh token persistence**: `clearLegacyPersistedAuth()` no longer removes the current refresh token when cleaning up legacy auth keys. This fixes session loss after login on some browsers.
+- **Fix Tauri default features**: The `vpx` (VP9 video codec) feature is no longer enabled by default in the desktop client, resolving build failures on systems without `libvpx-dev` installed. VP9 remains available via explicit `--features vpx` opt-in.
+
+### CI/CD Improvements
+
+- **Security remediation tracker**: Added `SECURITY_REMEDIATION_TRACKER.md` for the CI security gate.
+- **Remove duplicate cargo audit**: The `cargo audit` step was removed from the CI security-gate job since it is already covered by the dedicated `security-audit.yml` workflow.
+- **Fix Rust lint warnings**: Resolved unused imports and variables in `federation.rs`, `lib.rs`, and `video_pipeline.rs`.
+- **Fix code formatting**: Applied `cargo fmt` to Tauri source files.
+- **Fix npm audit vulnerabilities**: Updated transitive dependencies (`rollup`, `minimatch`) to resolve 2 high-severity advisories.
+- **Fix unit test mocks**: Corrected incomplete mocks in `authStore.test.ts` and `messageStore.test.ts` that caused 8 test failures.
+
+---
+
 ## What's New in v0.8.0
 
 ### Native QUIC Media Engine

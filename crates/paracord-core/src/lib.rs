@@ -6,6 +6,7 @@ pub mod error;
 pub mod events;
 pub mod guild;
 pub mod identity;
+pub mod interactions;
 pub mod member_index;
 pub mod message;
 pub mod observability;

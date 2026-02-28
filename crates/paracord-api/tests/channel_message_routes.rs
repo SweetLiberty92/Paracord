@@ -94,6 +94,7 @@ impl TestContext {
             federation_service: None,
             member_index: Arc::new(paracord_core::member_index::MemberIndex::empty()),
             native_media: None,
+            presence_manager: Arc::new(paracord_core::presence_manager::PresenceManager::new()),
         };
 
         paracord_api::install_http_rate_limiter();

@@ -15,7 +15,7 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use quinn::Connection;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::endpoint::MediaEndpoint;
 
@@ -475,7 +475,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 fn hex_decode(hex: &str) -> Option<Vec<u8>> {
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return None;
     }
     (0..hex.len())
@@ -639,6 +639,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_handshake_round_trip() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         // Set up two QUIC endpoints simulating two federated servers
         let tls_a = crate::endpoint::generate_self_signed_cert().unwrap();
         let tls_b = crate::endpoint::generate_self_signed_cert().unwrap();

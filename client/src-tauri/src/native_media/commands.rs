@@ -156,7 +156,9 @@ pub async fn voice_stop_screen_share(state: State<'_, MediaState>) -> Result<(),
 }
 
 /// Parse a binary frame payload: `[width:u32 LE][height:u32 LE][RGBA bytes…]`
-fn parse_frame_payload<'a>(request: &'a tauri::ipc::Request<'a>) -> Result<(u32, u32, &'a [u8]), String> {
+fn parse_frame_payload<'a>(
+    request: &'a tauri::ipc::Request<'a>,
+) -> Result<(u32, u32, &'a [u8]), String> {
     let body = match request.body() {
         tauri::ipc::InvokeBody::Raw(bytes) => bytes.as_slice(),
         tauri::ipc::InvokeBody::Json(_) => return Err("expected binary frame data".into()),

@@ -208,6 +208,7 @@ mod tests {
 
     #[tokio::test]
     async fn bind_and_get_local_addr() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let tls = generate_self_signed_cert().unwrap();
         let endpoint = MediaEndpoint::bind("127.0.0.1:0".parse().unwrap(), tls).unwrap();
         let addr = endpoint.local_addr().unwrap();
@@ -217,6 +218,7 @@ mod tests {
 
     #[tokio::test]
     async fn client_endpoint() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let endpoint = MediaEndpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
         let addr = endpoint.local_addr().unwrap();
         assert!(addr.port() > 0);
@@ -225,9 +227,15 @@ mod tests {
 
     #[tokio::test]
     async fn server_client_connect_and_exchange_datagram() {
-        // Start server
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        // Start server with the same ALPN that the client advertises
         let tls = generate_self_signed_cert().unwrap();
-        let server = MediaEndpoint::bind("127.0.0.1:0".parse().unwrap(), tls).unwrap();
+        let server = MediaEndpoint::bind_unified(
+            "127.0.0.1:0".parse().unwrap(),
+            tls,
+            vec![b"paracord-media".to_vec()],
+        )
+        .unwrap();
         let server_addr = server.local_addr().unwrap();
 
         // Start client

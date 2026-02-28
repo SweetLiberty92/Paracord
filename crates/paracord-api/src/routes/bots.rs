@@ -385,6 +385,10 @@ pub async fn delete_bot_application(
     paracord_db::bot_applications::delete_bot_application(&state.db, bot_app_id)
         .await
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e.to_string())))?;
+
+    // Clean up the associated bot user
+    let _ = paracord_db::users::delete_user(&state.db, app.bot_user_id).await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 

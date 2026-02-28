@@ -1133,29 +1133,27 @@ pub async fn download_federated_file(
             .await
             .unwrap_or(0);
         if cache_size + file_data.len() as i64 <= state.config.federation_file_cache_max_size as i64
-        {
-            if state
+            && state
                 .storage_backend
                 .store(&cache_key, &file_data)
                 .await
                 .is_ok()
-            {
-                let expires = chrono::Utc::now()
-                    + chrono::Duration::hours(state.config.federation_file_cache_ttl_hours as i64);
-                let expires_str = expires.format("%Y-%m-%d %H:%M:%S").to_string();
-                let _ = paracord_db::federation_file_cache::insert_cached_file(
-                    &state.db,
-                    &origin_server,
-                    &attachment_id,
-                    &hash,
-                    &filename,
-                    Some(&content_type),
-                    file_data.len() as i64,
-                    &cache_key,
-                    Some(&expires_str),
-                )
-                .await;
-            }
+        {
+            let expires = chrono::Utc::now()
+                + chrono::Duration::hours(state.config.federation_file_cache_ttl_hours as i64);
+            let expires_str = expires.format("%Y-%m-%d %H:%M:%S").to_string();
+            let _ = paracord_db::federation_file_cache::insert_cached_file(
+                &state.db,
+                &origin_server,
+                &attachment_id,
+                &hash,
+                &filename,
+                Some(&content_type),
+                file_data.len() as i64,
+                &cache_key,
+                Some(&expires_str),
+            )
+            .await;
         }
     }
 

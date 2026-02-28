@@ -100,8 +100,7 @@ impl MediaConnection {
             .await
             .map_err(ConnectionError::ReadError)?;
 
-        let msg: ControlMessage =
-            serde_json::from_slice(&msg_buf).map_err(|e| ControlError::Json(e))?;
+        let msg: ControlMessage = serde_json::from_slice(&msg_buf).map_err(ControlError::Json)?;
 
         let token = match msg {
             ControlMessage::Auth { token } => token,

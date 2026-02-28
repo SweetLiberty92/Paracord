@@ -1,3 +1,4 @@
+pub mod application_commands;
 pub mod attachments;
 pub mod audit_log;
 pub mod bans;
@@ -10,6 +11,7 @@ pub mod federation;
 pub mod federation_file_cache;
 pub mod guild_storage_policies;
 pub mod guilds;
+pub mod interaction_tokens;
 pub mod invites;
 pub mod members;
 pub mod messages;
@@ -286,14 +288,15 @@ pub(crate) fn datetime_from_db_text(
         return Ok(Utc.from_utc_datetime(&naive));
     }
 
-    Err(sqlx::Error::Protocol(
-        format!("invalid datetime text '{}'", value).into(),
-    ))
+    Err(sqlx::Error::Protocol(format!(
+        "invalid datetime text '{}'",
+        value
+    )))
 }
 
 pub(crate) fn json_from_db_text(value: &str) -> Result<serde_json::Value, sqlx::Error> {
     serde_json::from_str(value)
-        .map_err(|e| sqlx::Error::Protocol(format!("invalid json text: {e}").into()))
+        .map_err(|e| sqlx::Error::Protocol(format!("invalid json text: {e}")))
 }
 
 pub(crate) fn bool_from_any_row(

@@ -75,8 +75,8 @@ pub fn stop_screen_share(session: &mut NativeMediaSession) {
 /// `is_screen` selects whether to use the screen or camera encoder/SSRC.
 pub fn encode_and_send_video_frame(
     session: &mut NativeMediaSession,
-    width: u32,
-    height: u32,
+    _width: u32,
+    _height: u32,
     rgba_data: &[u8],
     is_screen: bool,
 ) -> Result<(), String> {

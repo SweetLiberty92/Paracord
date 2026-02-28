@@ -67,6 +67,7 @@ pub async fn delete_guild(pool: &DbPool, guild_id: i64, user_id: i64) -> Result<
 }
 
 /// Update guild fields, requires MANAGE_GUILD permission.
+#[allow(clippy::too_many_arguments)]
 pub async fn update_guild(
     pool: &DbPool,
     guild_id: i64,

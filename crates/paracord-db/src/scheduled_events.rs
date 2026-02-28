@@ -60,6 +60,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::any::AnyRow> for EventRsvpRow {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_event(
     pool: &DbPool,
     id: i64,
@@ -121,6 +122,7 @@ pub async fn get_guild_events(
     Ok(rows)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn update_event(
     pool: &DbPool,
     id: i64,

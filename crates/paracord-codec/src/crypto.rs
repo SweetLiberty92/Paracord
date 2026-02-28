@@ -105,6 +105,12 @@ impl FrameEncryptor {
     }
 }
 
+impl Default for FrameEncryptor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Frame decryptor using AES-128-GCM.
 ///
 /// Decrypts media frame payloads, supporting multiple active key epochs
@@ -169,6 +175,12 @@ impl FrameDecryptor {
                 },
             )
             .map_err(|_| CryptoError::DecryptionFailed)
+    }
+}
+
+impl Default for FrameDecryptor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

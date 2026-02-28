@@ -318,7 +318,7 @@ async fn proxy_ws(client_socket: WebSocket, target: String, conn_id: u64) {
     let mut backend_opt = None;
     for attempt in 0..MAX_BACKEND_RETRIES {
         let connect_fut =
-            tokio_tungstenite::connect_async_with_config(&target, Some(ws_config.clone()), true);
+            tokio_tungstenite::connect_async_with_config(&target, Some(ws_config), true);
         match tokio::time::timeout(
             std::time::Duration::from_secs(BACKEND_CONNECT_TIMEOUT_SECS),
             connect_fut,

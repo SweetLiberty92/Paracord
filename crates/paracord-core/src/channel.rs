@@ -4,6 +4,7 @@ use paracord_db::DbPool;
 use paracord_models::permissions::Permissions;
 
 /// Create a channel in a guild, requires MANAGE_CHANNELS.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_channel(
     pool: &DbPool,
     guild_id: i64,

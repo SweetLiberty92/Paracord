@@ -107,6 +107,7 @@ pub struct FederatedChannelMapRow {
 }
 
 /// Insert or update a known federated server.
+#[allow(clippy::too_many_arguments)]
 pub async fn upsert_federated_server(
     pool: &DbPool,
     id: i64,
@@ -275,6 +276,7 @@ pub async fn prune_transport_replay_cache(
     Ok(rows)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn enqueue_outbound_event(
     pool: &DbPool,
     destination_server: &str,
@@ -312,12 +314,12 @@ pub async fn enqueue_outbound_event(
     .bind(origin_server)
     .bind(origin_ts)
     .bind(serde_json::to_string(content).map_err(|e| {
-        sqlx::Error::Protocol(format!("invalid federation content json: {e}").into())
+        sqlx::Error::Protocol(format!("invalid federation content json: {e}"))
     })?)
     .bind(depth)
     .bind(state_key)
     .bind(serde_json::to_string(signatures).map_err(|e| {
-        sqlx::Error::Protocol(format!("invalid federation signatures json: {e}").into())
+        sqlx::Error::Protocol(format!("invalid federation signatures json: {e}"))
     })?)
     .bind(now_ms)
     .execute(pool)
@@ -411,6 +413,7 @@ pub async fn mark_outbound_event_retry(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn record_delivery_attempt(
     pool: &DbPool,
     destination_server: &str,

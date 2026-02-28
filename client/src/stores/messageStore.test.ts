@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+vi.mock('axios', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('axios')>();
+  return { ...actual, default: { ...actual.default, isCancel: vi.fn(() => false) } };
+});
+
 const mockToast = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -61,7 +66,12 @@ vi.mock('../lib/accountSession', () => ({
 
 vi.mock('../api/channels', () => ({ channelApi: mockChannelApi }));
 
+const mockApiClient = vi.hoisted(() => ({
+  get: vi.fn(),
+}));
+
 vi.mock('../api/client', () => ({
+  apiClient: mockApiClient,
   extractApiError: vi.fn((err: unknown) => {
     if (err instanceof Error) return err.message;
     return 'An unexpected error occurred';
@@ -122,7 +132,7 @@ describe('messageStore', () => {
         makeMessage({ id: 'm2', content: 'Newer' }),
         makeMessage({ id: 'm1', content: 'Older' }),
       ];
-      mockChannelApi.getMessages.mockResolvedValue({ data: msgs });
+      mockApiClient.get.mockResolvedValue({ data: msgs });
 
       await useMessageStore.getState().fetchMessages('ch1');
       const state = useMessageStore.getState();
@@ -137,14 +147,14 @@ describe('messageStore', () => {
       const msgs = Array.from({ length: 50 }, (_, i) =>
         makeMessage({ id: `m${i}`, content: `Msg ${i}` }),
       );
-      mockChannelApi.getMessages.mockResolvedValue({ data: msgs });
+      mockApiClient.get.mockResolvedValue({ data: msgs });
 
       await useMessageStore.getState().fetchMessages('ch1');
       expect(useMessageStore.getState().hasMore['ch1']).toBe(true);
     });
 
     it('sets hasMore to false when result is less than limit', async () => {
-      mockChannelApi.getMessages.mockResolvedValue({ data: [makeMessage()] });
+      mockApiClient.get.mockResolvedValue({ data: [makeMessage()] });
 
       await useMessageStore.getState().fetchMessages('ch1');
       expect(useMessageStore.getState().hasMore['ch1']).toBe(false);
@@ -157,7 +167,7 @@ describe('messageStore', () => {
     });
 
     it('shows toast on fetch failure', async () => {
-      mockChannelApi.getMessages.mockRejectedValue(new Error('fail'));
+      mockApiClient.get.mockRejectedValue(new Error('fail'));
 
       await useMessageStore.getState().fetchMessages('ch1');
       expect(mockToast.error).toHaveBeenCalled();
@@ -172,7 +182,7 @@ describe('messageStore', () => {
         makeMessage({ id: 'm2', content: 'Older 2' }),
         makeMessage({ id: 'm1', content: 'Older 1' }),
       ];
-      mockChannelApi.getMessages.mockResolvedValue({ data: olderMsgs });
+      mockApiClient.get.mockResolvedValue({ data: olderMsgs });
 
       await useMessageStore.getState().fetchMessages('ch1', { before: 'm3' });
       const messages = useMessageStore.getState().messages['ch1'];

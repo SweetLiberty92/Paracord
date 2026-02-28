@@ -345,7 +345,7 @@ fn parse_federation_allowed_guild_ids() -> Vec<i64> {
 
 fn ensure_federation_guild_allowed(guild_id: i64) -> Result<(), ApiError> {
     let allowlist = parse_federation_allowed_guild_ids();
-    if allowlist.iter().any(|allowed| *allowed == guild_id) {
+    if allowlist.contains(&guild_id) {
         return Ok(());
     }
     Err(ApiError::Forbidden)
@@ -394,6 +394,7 @@ fn parse_transport_headers(headers: &HeaderMap) -> Result<FederationTransportHea
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn verify_transport_request(
     state: &AppState,
     service: &FederationService,

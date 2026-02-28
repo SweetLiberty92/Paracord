@@ -221,7 +221,7 @@ impl RelayForwarder {
 
         // Find all participants subscribed to this sender
         let mut forward_count = 0u32;
-        for (_, participant) in &room.participants {
+        for participant in room.participants.values() {
             if participant.user_id == sender_id {
                 continue;
             }

@@ -102,15 +102,11 @@ pub struct DatabaseConfig {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DatabaseEngine {
+    #[default]
     Sqlite,
     Postgres,
-}
-
-impl Default for DatabaseEngine {
-    fn default() -> Self {
-        Self::Sqlite
-    }
 }
 
 impl Default for DatabaseConfig {
@@ -255,19 +251,11 @@ impl Default for LiveKitConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct NetworkConfig {
     /// On Windows, automatically add local firewall allow rules on startup.
     #[serde(default = "default_false")]
     pub windows_firewall_auto_allow: bool,
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        Self {
-            windows_firewall_auto_allow: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

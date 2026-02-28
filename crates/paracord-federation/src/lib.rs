@@ -250,6 +250,7 @@ impl FederationService {
     /// `guild_id` is encoded in `room_id` so membership and message events
     /// share the same federated room namespace. `sender_username` is the
     /// local user's display name used to build the federated identity string.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_message_envelope(
         &self,
         message_id: i64,
@@ -313,6 +314,7 @@ impl FederationService {
     }
 
     /// Build a signed custom federation event envelope.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_custom_envelope(
         &self,
         event_type: &str,
@@ -818,7 +820,7 @@ pub fn hex_encode(bytes: &[u8]) -> String {
 }
 
 pub fn hex_decode(value: &str) -> Option<Vec<u8>> {
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return None;
     }
     let mut out = Vec::with_capacity(value.len() / 2);

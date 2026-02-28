@@ -211,7 +211,10 @@ async fn handle_auto_mod(
                 Err(_) => continue,
             };
 
-            if let Ok(_) = paracord_db::messages::delete_message(&state.db, msg_id).await {
+            if paracord_db::messages::delete_message(&state.db, msg_id)
+                .await
+                .is_ok()
+            {
                 state.event_bus.dispatch(
                     "MESSAGE_DELETE",
                     serde_json::json!({
@@ -223,7 +226,7 @@ async fn handle_auto_mod(
 
                 let warning_id = paracord_util::snowflake::generate(1);
                 let warning_content =
-                    format!("A message was removed for containing restricted words.");
+                    "A message was removed for containing restricted words.".to_string();
                 if let Ok(warning_msg) = paracord_db::messages::create_message(
                     &state.db,
                     warning_id,
